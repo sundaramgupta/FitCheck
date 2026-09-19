@@ -5,23 +5,28 @@ import pandas as pd
 from io import StringIO
 import pdfplumber
 
-
-import streamlit as st
-
 with st.form("jd"):
+    # ask the user to upload a PDF file
     uploaded_file = st.file_uploader("Upload your Resume (PDF)")
+    if uploaded_file is not None:
+        jd = pdfplumber.open(uploaded_file)
+        first_page = jd.pages[0]
 
+        # extract text from the first page of the PDF
+        text = first_page.extract_text()
+
+        # print the text
+        st.text("Extracted Text from the Resume: " + text)
+    else:
+        st.text("Please upload a PDF file.")
+    
+    # ask the user to paste the JD text
     txt = st.text_area(
-        "Paste the JD here"
-    )
-    # Every form must have a submit button.
+        "Paste the JD here")
+
+    #present the JD text in a text area
+    st.text("Job Description: " + txt)
+
     submitted = st.form_submit_button("Submit")
+    
 
-if uploaded_file is not None:
-    with pdfplumber.open(uploaded_file) as pdf:
-            first_page = pdf.pages[0]
-            text = first_page.extract_text()
-
-            st.text(text)
-else:
-            st.text("Please upload a PDF file.")
