@@ -13,7 +13,6 @@ from pydantic import BaseModel, EmailStr, Field
 
 class ContactInformation(BaseModel):
     name: str = Field(...,description="full name")
-
     email: EmailStr = Field(..., description="email")
     phone: Optional[str] = Field(None, description="phone number")
     linkedin: Optional[str] = Field(None, description="URL of the candidate's LinkedIn profile.")
@@ -43,20 +42,26 @@ class WorkExperience(BaseModel):
 
 class ResumeProfile(BaseModel):
     contact_info: ContactInformation = Field(..., description="Personal and contact metadata.")
-    summary: Optional[str] = Field(None, description="A brief professional summary or objective statement.")
-    work_experience: List[WorkExperience] = Field(default=[], description="Chronological history of employment.")
-    education: List[Education] = Field(default=[], description="Academic history details.")
+    # summary: Optional[str] = Field(None, description="A brief professional summary or objective statement.")
+    experience_years: int = Field(..., description="Number of years of experience.")
+    # education: List[Education] = Field(default=[], description="Academic history details.")
     skills: List[str] = Field(default=[], description="List of technical, functional, or soft skills.")
-    certifications: List[str] = Field(default=[], description="Professional certifications or licenses.")
+    # certifications: List[str] = Field(default=[], description="Professional certifications or licenses.")
 
 
 class JDProfile(BaseModel):
     experience_years: int = Field(..., description="Number of years of experience.")
     location: str = Field(...,description="location of the job")
     skills: List[str] = Field(default=[], description="List of technical, functional, or soft skills.")
-    college: Optional[str] = Field(None, description="Preferred college or university.")
-    mandatory_requirements: List[str] = Field(default=[], description="List of job requirements or qualifications.")
-    good_to_have: List[str] = Field(default=[], description="List of preferred but not mandatory qualifications or skills.")
+    # college: Optional[str] = Field(None, description="Preferred college or university.")
+    # mandatory_requirements: List[str] = Field(default=[], description="List of job requirements or qualifications.")
+    # good_to_have: List[str] = Field(default=[], description="List of preferred but not mandatory qualifications or skills.")
+
+class GapAnalysis(BaseModel):
+    matching_skills: List[str]
+    missing_skills: List[str]
+    experience_gap: str
+    recommendations: List[str]
 
 
 with st.form("jd"):
@@ -83,6 +88,7 @@ with st.form("jd"):
 
     submitted = st.form_submit_button("Submit")
     # api_key = os.environ.get("GROQ_API_KEY") 
+
     if submitted:
         api_key = st.secrets["GROQ_API_KEY"]
         client = instructor.from_groq(Groq(api_key=api_key))
@@ -99,7 +105,6 @@ with st.form("jd"):
             temperature=0.1
         )
 
-
         parsed_jd = client.chat.completions.create(
             model=model_name,
             response_model=JDProfile,
@@ -110,16 +115,35 @@ with st.form("jd"):
             temperature=0.1
         )
 
+        gap_analysis = client.chat.completions.create(
+            model=model_name,
+            response_model=GapAnalysis,
+            messages=[
+                {"role": "system", "content": "You are a professional career advisor and you need to analyse the gap in the given two inputs"},
+                {"role": "user", "content": f"Extract profile data from the first input resume and 2nd input job description text: {parsed_resume} {parsed_jd}"}
+            ],
+            temperature=0.1
+        )
+
         st.success("Successfully processed records via Groq!")
 
         st.write(f"**Name:** {parsed_resume.contact_info.name}")
         st.write(f"**Email:** {parsed_resume.contact_info.email}")
         st.write(f"**phone:** {parsed_resume.contact_info.phone}")
-        st.write(f"**city:** {parsed_resume.contact_info.city}")
+        # st.write(f"**city:** {parsed_resume.contact_info.city}")
+        st.write(f"**experience_years:** {parsed_resume.experience_years}")
+        st.write(f"**skills:** {parsed_resume.skills}")
 
         st.success("Successfully processed records via Groq!")
 
         st.write(f"**exp needed:** {parsed_jd.experience_years}")
         st.write(f"**location:** {parsed_jd.location}")
         st.write(f"**skills:** {parsed_jd.skills}")
+
+        st.write(f"**gap_analysis:** {gap_analysis.recommendations}")
+
+
+
+# Gap Analysis
+
 
