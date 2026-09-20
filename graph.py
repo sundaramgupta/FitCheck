@@ -50,7 +50,7 @@ def parse_resume_node(state: AnalysisState):
         model=model_name,
         response_model=ResumeProfile,
         messages=[
-            {"role": "system", "content": "You are a professional resume parser. Output data strictly matching the requested structural keys."},
+            {"role": "system", "content": "You are a professional resume parser, Ensure that the extracted information is accurate and matches the structural keys provided. Avoid any assumptions or interpretations that deviate from the listed categories. The output should be clear and easy to read, without any additional commentary. I have experience in HR but may not be familiar with specific industry terminology, so please keep the language straightforward. Output data strictly matching the requested structural keys."},
             {"role": "user", "content": f"Extract profile data from this resume text: {resume_content}"}
         ],
         temperature=0.1
@@ -64,7 +64,7 @@ def parse_jd_node(state: AnalysisState):
         model=model_name,
         response_model=JDProfile,
         messages=[
-            {"role": "system", "content": "You are a recruitment tracking assistant. Output data strictly matching the requested structural keys."},
+            {"role": "system", "content": "I require a detailed extraction of key information from the provided job description. Ensure that the extracted data is accurate and corresponds directly to the information provided in the job description. Avoid including any subjective interpretations or opinions. Output data strictly matching the requested structural keys."},
             {"role": "user", "content": f"Extract profile data from this job description text: {jd_content}"}
         ],
         temperature=0.1

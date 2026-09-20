@@ -12,7 +12,6 @@ import pdfplumber
 from graph import app
 
 
-
 with st.form("jd"):
     # ask the user to upload a PDF file
     uploaded_file = st.file_uploader("Upload your Resume (PDF)")
@@ -26,7 +25,7 @@ with st.form("jd"):
         # print the text
         # st.text("Extracted Text from the Resume: " + text)
     else:
-        st.text("Please upload a PDF file.")
+        st.error("Please upload a PDF file.")
     
     # ask the user to paste the JD text
     txt = st.text_area(
@@ -38,11 +37,12 @@ with st.form("jd"):
     submitted = st.form_submit_button("Submit")
     # api_key = os.environ.get("GROQ_API_KEY") 
 
-    if submitted:
+    if submitted and txt:
         final_state = app.invoke({"resume_text": text, "jd_text": txt})
 
         analysis_result = final_state["gap_analysis"]
         st.success("Successfully processed records via Groq!")
+
 
         missing_skills = analysis_result.missing_skills
         matching_skills = analysis_result.matching_skills
@@ -64,6 +64,8 @@ with st.form("jd"):
         for item in recommendations:
             st.markdown(f"- {item}")
         st.divider()
+    else:
+        st.error("Please paste the JD in the box")
 
 
     
