@@ -39,6 +39,8 @@ class ResumeProfile(BaseModel):
     experience_years: int = Field(..., description="Number of years of experience.")
     # education: List[Education] = Field(default=[], description="Academic history details.")
     skills: List[str] = Field(default=[], description="List of technical, functional, or soft skills.")
+    errors: bool = Field(default=False, description="True if the PDF is not a Resume and False if its a valid Resume")
+
     # certifications: List[str] = Field(default=[], description="Professional certifications or licenses.")
 
 
@@ -49,6 +51,7 @@ class JDProfile(BaseModel):
     # college: Optional[str] = Field(None, description="Preferred college or university.")
     # mandatory_requirements: List[str] = Field(default=[], description="List of job requirements or qualifications.")
     # good_to_have: List[str] = Field(default=[], description="List of preferred but not mandatory qualifications or skills.")
+    errors: bool = Field(default=False, description="True if the box has gibberish and False if its a valid JD")
 
 class GapAnalysis(BaseModel):
     matching_skills: List[str]

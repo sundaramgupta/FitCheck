@@ -50,7 +50,7 @@ def parse_resume_node(state: AnalysisState):
         model=model_name,
         response_model=ResumeProfile,
         messages=[
-            {"role": "system", "content": "You are a professional resume parser, Ensure that the extracted information is accurate and matches the structural keys provided. Avoid any assumptions or interpretations that deviate from the listed categories. The output should be clear and easy to read, without any additional commentary. I have experience in HR but may not be familiar with specific industry terminology, so please keep the language straightforward. Output data strictly matching the requested structural keys."},
+            {"role": "system", "content": "You are a professional resume parser, Ensure that the extracted information is accurate and matches the structural keys provided. if you think the pasted text is not a Resume, you need to highlight this in the errors. Avoid any assumptions or interpretations that deviate from the listed categories. The output should be clear and easy to read, without any additional commentary. I have experience in HR but may not be familiar with specific industry terminology, so please keep the language straightforward. Output data strictly matching the requested structural keys."},
             {"role": "user", "content": f"Extract profile data from this resume text: {resume_content}"}
         ],
         temperature=0.1
@@ -64,7 +64,7 @@ def parse_jd_node(state: AnalysisState):
         model=model_name,
         response_model=JDProfile,
         messages=[
-            {"role": "system", "content": "I require a detailed extraction of key information from the provided job description. Ensure that the extracted data is accurate and corresponds directly to the information provided in the job description. Avoid including any subjective interpretations or opinions. Output data strictly matching the requested structural keys."},
+            {"role": "system", "content": "I require a detailed extraction of key information from the provided job description. Ensure that the extracted data is accurate and corresponds directly to the information provided in the job description. if you think the pasted text is not a Job description, you need to highlight this. Avoid including any subjective interpretations or opinions. Output data strictly matching the requested structural keys."},
             {"role": "user", "content": f"Extract profile data from this job description text: {jd_content}"}
         ],
         temperature=0.1
@@ -81,8 +81,8 @@ def gap_analysis_node(state: AnalysisState):
         model=model_name,
         response_model=GapAnalysis,
         messages=[
-            {"role": "system", "content": "You are a professional career advisor and you need to analyse the gap in the given two inputs"},
-            {"role": "user", "content": f"Extract profile data from the first input resume and 2nd input job description text: {resume_data} {jd_data}"}
+            {"role": "system", "content": "You are a professional career advisor and you need to analyse the gap in the given two inputs. If there are any highlighted issues in 'errors' then you do not need to produce any output."},
+            {"role": "user", "content": f"Extract profile data from the first input resume and 2nd input job description text but if theres anything in the 'errors' field then do not produce any outputs: {resume_data} {jd_data}"}
         ],
         temperature=0.1
     )
