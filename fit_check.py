@@ -17,7 +17,29 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
+st.markdown(
+    """
+    <style>
+    /* Hides the Streamlit bottom status / user avatar bar */
+    div[data-testid="stStatusWidget"],
+    .viewerBadge_container__r5tak,
+    .viewerBadge_link__1S137,
+    footer {
+        visibility: hidden;
+        height: 0%;
+        position: fixed;
+    }
+    
+    /* Targets the mobile-specific bottom toolbar if present */
+    [data-testid="stToolbar"] {
+        visibility: hidden;
+        height: 0%;
+        position: fixed;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 st.markdown(
     """
     <div style="text-align: center; display: flex; justify-content: center; align-items: baseline; gap: 12px;">
