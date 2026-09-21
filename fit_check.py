@@ -12,6 +12,15 @@ import pdfplumber
 from graph import app
 
 
+st.markdown(
+    """
+    <div style="text-align: center; display: flex; justify-content: center; align-items: baseline; gap: 12px;">
+        <span style="font-size: 2rem; font-weight: 700;">FitCheck</span>
+        <span style="font-size: 1.25rem; font-weight: 500; color: gray;">How fit you actually are for that role?</span>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 with st.form("jd"):
     # ask the user to upload a PDF file
