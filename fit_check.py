@@ -12,6 +12,7 @@ import pdfplumber
 from graph import app
 
 
+
 with st.form("jd"):
     # ask the user to upload a PDF file
     uploaded_file = st.file_uploader("Upload your Resume (PDF)")
@@ -25,7 +26,7 @@ with st.form("jd"):
         # print the text
         # st.text("Extracted Text from the Resume: " + text)
     else:
-        st.error("Please upload a PDF file.")
+        st.text("Please upload a PDF file.")
     
     # ask the user to paste the JD text
     txt = st.text_area(
@@ -37,35 +38,43 @@ with st.form("jd"):
     submitted = st.form_submit_button("Submit")
     # api_key = os.environ.get("GROQ_API_KEY") 
 
-    if submitted and txt:
+    if submitted:
         final_state = app.invoke({"resume_text": text, "jd_text": txt})
 
         analysis_result = final_state["gap_analysis"]
         st.success("Successfully processed records via Groq!")
 
-
         missing_skills = analysis_result.missing_skills
         matching_skills = analysis_result.matching_skills
         recommendations = analysis_result.recommendations
-        st.write("**Missing Skills**:")
-        for item in missing_skills:
-            st.markdown(f" - {item}")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader(" Missing Skills")
+            if missing_skills:
+                st.markdown(", ".join(f"`{item}`" for item in missing_skills))
+            else:
+                st.write("None identified!")
+
+        with col2:
+            st.subheader(" Matching Skills")
+            if matching_skills:
+                # for item in matching_skills:
+                # st.markdown(", ".join(f":red[{item}]" for item in matching_skills))
+                # st.markdown(f":red[{', '.join(f'`{item}`' for item in matching_skills)}]")
+                st.markdown(", ".join(f"`{item}`" for item in matching_skills))
+            else:
+                st.write("None identified!")
         st.divider()
+        # st.header("This is a header with a divider", )
+        st.header("Experience Gap", divider="gray")
+        st.write(f"{analysis_result.experience_gap}" )
+        # st.divider()
 
-        st.write("**Matching Skills**:")
-        for item in matching_skills:
-            st.markdown(f" - {item}")
-        st.divider()
-
-
-        st.write(f"**Experience Gap**: {analysis_result.experience_gap}")
-
-        st.write("**Recommendations**:")
+        st.header("Recommendations", divider="gray")
+        # st.write(f"{analysis_result.experience_gap}" )
         for item in recommendations:
-            st.markdown(f"- {item}")
-        st.divider()
-    else:
-        st.error("Please paste the JD in the box")
+            st.markdown(f"-{item}")
 
 
     
