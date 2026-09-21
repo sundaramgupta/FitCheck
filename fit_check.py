@@ -11,11 +11,17 @@ from io import StringIO
 import pdfplumber
 from graph import app
 
+st.set_page_config(
+    page_title="FitCheck",
+    page_icon="📃",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 st.markdown(
     """
     <div style="text-align: center; display: flex; justify-content: center; align-items: baseline; gap: 12px;">
-        <span style="font-size: 2rem; font-weight: 700;">FitCheck</span>
+        <span style="font-size: 2rem; font-weight: 700;">FitCheck 📃</span>
         <span style="font-size: 1.25rem; font-weight: 500; color: gray;">How fit you actually are for that role?</span>
     </div>
     """,
