@@ -19,7 +19,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from schemas import GapAnalysis, JDProfile, ResumeProfile
 
-# STatae defination
+# state defination
 class AnalysisState(TypedDict):
 
     resume_text: str
