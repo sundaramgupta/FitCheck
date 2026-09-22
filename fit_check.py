@@ -79,6 +79,7 @@ with st.form("jd"):
         # api_key = os.environ.get("GROQ_API_KEY") 
 
         if txt and uploaded_file:
+    
             with st.spinner("Analyzing resume and job description..."):
                 try:
                     final_state = app.invoke({"resume_text": text, "jd_text": txt})

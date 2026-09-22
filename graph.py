@@ -76,13 +76,17 @@ def gap_analysis_node(state: AnalysisState):
     resume_data = state["parsed_resume"]
     jd_data = state["parsed_jd"]
 
+    # if the output is not proper, do not run the llm
+    if resume_data.errors is True or jd_data.errors is True:
+        return {"gap_analysis": None}
+    
     client = get_client()
     gap_analysis = client.chat.completions.create(
         model=model_name,
         response_model=GapAnalysis,
         messages=[
             {"role": "system", "content": "You are a professional career advisor and you need to analyse the gap in the given two inputs. If there are any highlighted issues in 'errors' then you do not need to produce any output."},
-            {"role": "user", "content": f"Extract profile data from the first input resume and 2nd input job description text but if theres anything in the 'errors' field then do not produce any outputs: {resume_data} {jd_data}"}
+            {"role": "user", "content": f"Extract profile data from the first input resume and 2nd input job description text but if theres anything in the 'errors' field then do not produce any output: {resume_data} {jd_data}"}
         ],
         temperature=0.1
     )
