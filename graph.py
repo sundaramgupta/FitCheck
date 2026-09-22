@@ -8,6 +8,7 @@ from typing import List, Optional
 import instructor
 from groq import Groq
 import os
+import itertools
 
 import streamlit as st
 import pandas as pd
@@ -31,10 +32,21 @@ class AnalysisState(TypedDict):
     gap_analysis: Optional[GapAnalysis]
 
 # 2. Model setup
+keys_list = st.secrets.get("GROQ_API_KEY", [])
+
+if not keys_list and "GROQ_API_KEY" in st.secrets:
+    single_key = st.secrets["GROQ_API_KEY"]
+    keys_list = [single_key] if isinstance(single_key, str) else list(single_key)
+
+key_cycle = itertools.cycle(keys_list)
 
 def get_client():
-    api_key = st.secrets["GROQ_API_KEY"]
-    return instructor.from_groq(Groq(api_key=api_key))
+    api_key = next(key_cycle)
+    return instructor.from_groq(
+        Groq(api_key=api_key),
+        mode=instructor.Mode.JSON,  # Avoids Groq's XML parser issues
+    )
+
 
 model_name = "qwen/qwen3.8-27b"
 
@@ -85,8 +97,20 @@ def gap_analysis_node(state: AnalysisState):
         model=model_name,
         response_model=GapAnalysis,
         messages=[
-            {"role": "system", "content": "You are a professional career advisor and you need to analyse the gap in the given two inputs. If there are any highlighted issues in 'errors' then you do not need to produce any output."},
-            {"role": "user", "content": f"Extract profile data from the first input resume and 2nd input job description text but if theres anything in the 'errors' field then do not produce any output: {resume_data} {jd_data}"}
+            {
+                "role": "system",
+                "content": (
+                    "You are a professional career advisor and you need to analyse the gap in the given two inputs. "
+                    "Provide matching skills, missing skills, experience gap, and recommendations."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Extract profile data from the first input resume and 2nd input job description text: "
+                    f"{resume_data} {jd_data}"
+                ),
+            },
         ],
         temperature=0.1
     )
