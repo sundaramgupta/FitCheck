@@ -41,11 +41,15 @@ if not keys_list and "GROQ_API_KEY" in st.secrets:
 key_cycle = itertools.cycle(keys_list)
 
 def get_client():
-    api_key = next(key_cycle)
-    return instructor.from_groq(
-        Groq(api_key=api_key),
-        mode=instructor.Mode.JSON,  # Avoids Groq's XML parser issues
-    )
+    user_key = st.session_state.get("user_groq_key")
+    if user_key:
+        api_key = user_key
+    else:
+        api_key = next(key_cycle)
+        return instructor.from_groq(
+            Groq(api_key=api_key),
+            mode=instructor.Mode.JSON,  # Avoids Groq's XML parser issues
+        )
 
 
 model_name = "qwen/qwen3.8-27b"
@@ -65,7 +69,7 @@ def parse_resume_node(state: AnalysisState):
             {"role": "system", "content": "You are a professional resume parser, Ensure that the extracted information is accurate and matches the structural keys provided. if you think the pasted text is not a Resume, you need to highlight this in the errors. Avoid any assumptions or interpretations that deviate from the listed categories. The output should be clear and easy to read, without any additional commentary. I have experience in HR but may not be familiar with specific industry terminology, so please keep the language straightforward. Output data strictly matching the requested structural keys."},
             {"role": "user", "content": f"Extract profile data from this resume text: {resume_content}"}
         ],
-        temperature=0.1
+        temperature=0.0
     )
     return {"parsed_resume": parsed_resume}
 
@@ -79,7 +83,7 @@ def parse_jd_node(state: AnalysisState):
             {"role": "system", "content": "I require a detailed extraction of key information from the provided job description. Ensure that the extracted data is accurate and corresponds directly to the information provided in the job description. if you think the pasted text is not a Job description, you need to highlight this. Avoid including any subjective interpretations or opinions. Output data strictly matching the requested structural keys."},
             {"role": "user", "content": f"Extract profile data from this job description text: {jd_content}"}
         ],
-        temperature=0.1
+        temperature=0.0
     )
     return {"parsed_jd": parsed_jd}
 
@@ -96,23 +100,33 @@ def gap_analysis_node(state: AnalysisState):
     gap_analysis = client.chat.completions.create(
         model=model_name,
         response_model=GapAnalysis,
+
         messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are a professional career advisor and you need to analyse the gap in the given two inputs. "
-                    "Provide matching skills, missing skills, experience gap, and recommendations."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Extract profile data from the first input resume and 2nd input job description text: "
-                    f"{resume_data} {jd_data}"
-                ),
-            },
-        ],
-        temperature=0.1
+                    {
+                        "role": "system",
+                        # NEW: General-purpose matching instructions across all professions and domains
+                        "content": (
+                            "You are an expert career advisor and job alignment specialist across diverse industries.\n\n"
+                            "MATCHING INSTRUCTIONS:\n"
+                            "1. Match competencies SEMANTICALLY rather than requiring exact keyword phrasing. "
+                            "Treat synonyms, abbreviations, related industry phrasing, and equivalent responsibilities as direct matches "
+                            "(e.g., 'Client Relations' matches 'Account Management'; 'P&L Oversight' matches 'Budgeting'; 'Reporting' matches 'Analytics').\n"
+                            "2. If the candidate's profile demonstrates practical experience or related tools that fulfill a core requirement, "
+                            "classify it as a MATCHING skill rather than missing.\n"
+                            "3. 'missing_skills' must contain ONLY required competencies from the job description for which the candidate has shown zero evidence.\n"
+                            "4. Base the experience gap on overall seniority, responsibilities, and years required versus provided."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        # NEW: Cleaned user prompt removing conflicting "do not output" instructions
+                        "content": (
+                            f"Candidate Extracted Profile:\n{resume_data}\n\n"
+                            f"Job Description Requirements:\n{jd_data}"
+                        ),
+                    },
+                ],
+        temperature=0.0
     )
     return {"gap_analysis": gap_analysis}
 

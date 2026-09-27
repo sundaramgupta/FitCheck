@@ -18,29 +18,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-st.markdown(
-    """
-    <style>
-    /* Hides the Streamlit bottom status / user avatar bar */
-    div[data-testid="stStatusWidget"],
-    .viewerBadge_container__r5tak,
-    .viewerBadge_link__1S137,
-    footer {
-        visibility: hidden;
-        height: 0%;
-        position: fixed;
-    }
-    
-    /* Targets the mobile-specific bottom toolbar if present */
-    [data-testid="stToolbar"] {
-        visibility: hidden;
-        height: 0%;
-        position: fixed;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+
 st.markdown(
     """
     <div style="text-align: center; display: flex; justify-content: center; align-items: baseline; gap: 12px;">
@@ -50,7 +28,21 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-# just to 
+
+with st.sidebar:
+    st.subheader("🔑 API Configuration")
+    user_groq_key = st.text_input(
+        "Enter your Groq API Key (Optional)",
+        type="password",
+        help="If the shared daily limit runs out, your personal free Groq key will be used instead.",
+        placeholder="gsk_..."
+    )
+    # NEW: Store the custom key in Streamlit session state so graph.py can access it
+    st.session_state["user_groq_key"] = user_groq_key.strip() if user_groq_key else None
+
+    # NEW: Helpful link for users who need a free key
+    st.markdown("[Get a free Groq API key here](https://console.groq.com/keys)")
+    
 with st.form("jd"):
     # ask the user to upload a PDF file
     uploaded_file = st.file_uploader("Upload your Resume (PDF)", type=".pdf")
@@ -142,12 +134,16 @@ with st.form("jd"):
                                 r"\.[0-9]+s", "s", wait_time
                             ).replace("m", "m ")
                             st.error(
-                                f"💸🤑 **We are using a free tier model because we don't have enough money!** Daily free quota reached. Please try again in **{wait_time_clean}**."
-                            )
+                                        "⏳ **Daily community token limit reached!**\n\n"
+                                        "Please paste your free personal Groq API Key in the left sidebar under "
+                                        "**API Configuration** to run your analysis without waiting."
+                                    )
                         else:
-                            st.error(
-                                "💸🤑 **We are using a free tier model!** Daily free quota reached. Please try again in about 10 minutes."
-                            )
+                         st.error(
+                                        "⏳ **Daily community token limit reached!**\n\n"
+                                        "Please paste your free personal Groq API Key in the left sidebar under "
+                                        "**API Configuration** to run your analysis without waiting."
+                                    )
                     else:
                         st.error(
                             f"⚠️ An unexpected error occurred: {err_str}"
