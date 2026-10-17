@@ -47,10 +47,10 @@ def get_client():
         api_key = user_key
     else:
         api_key = next(key_cycle)
-        return instructor.from_groq(
-            Groq(api_key=api_key),
-            mode=instructor.Mode.JSON,  # Avoids Groq's XML parser issues
-        )
+    return instructor.from_groq(
+        Groq(api_key=api_key),
+        mode=instructor.Mode.JSON,  # Avoids Groq's XML parser issues
+    )
 
 
 model_name = "qwen/qwen3.8-27b"
@@ -143,7 +143,7 @@ def score_match_node(state: AnalysisState):
             ],
         temperature=0.0
     )
-    return {"gap_analysis": gap_analysis}
+    return {"score_data": gap_analysis}
 
 def high_fit_branch_node(state: AnalysisState):
     client = get_client()
