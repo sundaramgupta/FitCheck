@@ -3,58 +3,105 @@ from typing import List, Optional
 from typing_extensions import TypedDict
 import streamlit as st
 
-
-# class ContactInformation(BaseModel):
-#     name: str = Field(...,description="full name")
-#     email: EmailStr = Field(..., description="email")
-#     phone: Optional[str] = Field(None, description="phone number")
-#     linkedin: Optional[str] = Field(None, description="URL of the candidate's LinkedIn profile.")
-#     website: Optional[str] = Field(None, description="URL of the candidate's portfolio or personal website.")
-#     github: Optional[str] = Field(None, description="URL of the candidate's GitHub profile.")
-#     city: Optional[str] = Field(None, description="city of residence")
-
-# class Education(BaseModel):
-#     institution: str = Field(..., description="uni")
-#     degree: str = Field(..., description="degree")
-#     field_of_study: Optional[str] = Field(None, description="Major, concentration, or specialization.")
-#     start_date: Optional[str] = Field(None, description="Start date of attendance (e.g., MM/YYYY or Year).")
-#     end_date: Optional[str] = Field(None, description="Graduation or end date (e.g., MM/YYYY or 'Present').")
-#     gpa: Optional[float] = Field(None, description="Grade Point Average if explicitly mentioned.")
-
-
-# class WorkExperience(BaseModel):
-#     company: str = Field(..., description="Name of the employing organization.")
-#     role: str = Field(..., description="The job title or position held.")
-#     location: Optional[str] = Field(None, description="Geographic location of the job (City, State/Country).")
-#     start_date: str = Field(..., description="Employment start date (e.g., MM/YYYY).")
-#     end_date: str = Field(..., description="Employment end date or 'Present'.")
-#     responsibilities: List[str] = Field(
-#         ..., 
-#         description="List of bullet points describing key duties, achievements, and impact."
-#     )
+class RoleExperience(BaseModel):
+    company: str = Field(description="Company or organization name")
+    role: str = Field(description="Job title or position held")
+    bullet_points: List[str] = Field(
+        default_factory=list,
+        description="2-4 key achievement or responsibility bullets from this role"
+    )
 
 class ResumeProfile(BaseModel):
-    # contact_info: ContactInformation = Field(description="Personal and contact metadata.")
-    # summary: Optional[str] = Field(None, description="A brief professional summary or objective statement.")
-    experience_years: Optional[float] = Field(default=None, description="Number of years of experience.")
-    # education: List[Education] = Field(default=[], description="Academic history details.")
-    skills: List[str] = Field(default=[], description="List of technical, functional, or soft skills.")
-    errors: bool = Field(default=False, description="True if the PDF is not a Resume and False if its a valid Resume")
-
-    # certifications: List[str] = Field(default=[], description="Professional certifications or licenses.")
-
+    experience_years: Optional[float] = Field(
+        default=None, 
+        description="Total years of professional experience as a decimal or integer."
+    )
+    skills: List[str] = Field(
+        default_factory=list, 
+        description="Directly listed technical, functional, or tool skills."
+    )
+    # NEW: Preserves actual work history so downstream nodes can inspect proof of collaboration & problem-solving
+    work_history: List[RoleExperience] = Field(
+        default_factory=list,
+        description="List of past roles with their original achievement bullets"
+    )
+    errors: bool = Field(
+        default=False, 
+        description="True if input is gibberish or not a resume; False if valid."
+    )
 
 class JDProfile(BaseModel):
-    experience_years: Optional[float] = Field(default=None, description="Number of years of experience.")
-    location: Optional[str] = Field(default=None, description="location of the job")
-    skills: List[str] = Field(default=[], description="List of technical, functional, or soft skills.")
-    # college: Optional[str] = Field(None, description="Preferred college or university.")
-    # mandatory_requirements: List[str] = Field(default=[], description="List of job requirements or qualifications.")
-    # good_to_have: List[str] = Field(default=[], description="List of preferred but not mandatory qualifications or skills.")
-    errors: bool = Field(default=False, description="True if the box has gibberish and False if its a valid JD")
+    experience_years: Optional[float] = Field(
+        default=None, 
+        description="Required years of experience if stated."
+    )
+    location: Optional[str] = Field(
+        default=None, 
+        description="Location or remote status."
+    )
+    # NEW: Separates concrete hard tools from behavioral drivers
+    required_hard_skills: List[str] = Field(
+        default_factory=list, 
+        description="Concrete tools, tech stack, platforms, or domain methodologies."
+    )
+    required_competencies: List[str] = Field(
+        default_factory=list, 
+        description="Behavioral drivers (e.g. cross-stakeholder alignment, problem-solving, root-cause analysis)."
+    )
+    errors: bool = Field(
+        default=False, 
+        description="True if input is gibberish or not a job description; False if valid."
+    )
 
-class GapAnalysis(BaseModel):
-    matching_skills: List[str]
-    missing_skills: List[str]
-    experience_gap: str
-    recommendations: List[str]
+# 3-Tier Weighted Scoring
+# new schemas #1 pivot
+class EvaluatedCompetency(BaseModel):
+    competency: str = Field(description="The requirement from the JD (e.g., Problem Solving)")
+    status: str = Field(description="'Demonstrated in Experience', 'Partially Supported', or 'Missing'")
+    evidence_citation: str = Field(
+        description="Direct citation from work_history proving capability. If missing, explain the exact scope gap."
+    )
+class MatchScore(BaseModel):
+    hard_skills_score: int = Field(..., ge=0, le=40, description="Score out of 40 for technical/tool match")
+    competency_score: int = Field(..., ge=0, le=40, description="Score out of 40 based on proof in bullet points")
+    seniority_score: int = Field(..., ge=0, le=20, description="Score out of 20 for ownership depth and scope")
+    total_score: int = Field(..., ge=0, le=100, description="Sum of the 3 components (0-100)")
+    competency_audit: List[EvaluatedCompetency] = Field(
+        default_factory=list,
+        description="Item-by-item audit of JD requirements against resume evidence"
+    )
+    quick_summary: str = Field(description="2-3 sentence executive assessment of alignment")
+
+class BulletRewrite(BaseModel):
+    target_role: str = Field(description="Company or role on resume being refined")
+    original_bullet: str = Field(description="Original bullet from the resume")
+    rewritten_bullet: str = Field(
+        description="Enhanced bullet weaving in the missing competency and metrics naturally"
+    )
+    competency_elevated: str = Field(description="The specific skill/competency addressed")
+    why_it_works: str = Field(description="Why this demonstrates impact without buzzword stuffing")
+
+# NEW: Pivot guidance container for Low-Fit candidates (< 50)
+class PivotGuidance(BaseModel):
+    core_blockers: List[str] = Field(
+        default_factory=list,
+        description="The 2-3 non-negotiable gaps that make this target role an immediate reach."
+    )
+    stepping_stone_roles: List[str] = Field(
+        default_factory=list,
+        description="Alternative target roles where the candidate is competitive today."
+    )
+    prerequisite_projects_or_skills: List[str] = Field(
+        default_factory=list,
+        description="Concrete portfolio projects or stack proficiencies needed before reapplying."
+    )
+
+class StrategyReport(BaseModel):
+    category: str = Field(description="'High Fit', 'Competitive Fit', or 'Low Fit (Pivot Needed)'")
+    headline: str = Field(description="Core positioning takeaway")
+    bullet_rewrites: List[BulletRewrite] = Field(default_factory=list)
+    strategic_actions: List[str] = Field(default_factory=list)
+    pivot_guidance: Optional[PivotGuidance] = Field(
+        default=None,
+        description="Populated only when total_score < 50 to provide stepping-stone advice."
+    )
