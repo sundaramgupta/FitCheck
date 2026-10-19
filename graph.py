@@ -9,7 +9,7 @@ import instructor
 from groq import Groq
 import os
 import itertools
-
+import anthropic
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -33,28 +33,21 @@ class AnalysisState(TypedDict):
     final_report: Optional[StrategyReport]
 
 # 2. Model setup
-keys_list = st.secrets.get("GROQ_API_KEY", [])
+import os
+import anthropic
+import instructor
+import streamlit as st
 
-if not keys_list and "GROQ_API_KEY" in st.secrets:
-    single_key = st.secrets["GROQ_API_KEY"]
-    keys_list = [single_key] if isinstance(single_key, str) else list(single_key)
-
-key_cycle = itertools.cycle(keys_list)
-
+# 2. Model & Client Setup
 def get_client():
-    user_key = st.session_state.get("user_groq_key")
-    if user_key:
-        api_key = user_key
-    else:
-        api_key = next(key_cycle)
-    return instructor.from_groq(
-        Groq(api_key=api_key),
-        mode=instructor.Mode.JSON,  # Avoids Groq's XML parser issues
+    anthropic_key = st.secrets.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+    if not anthropic_key:
+        raise ValueError("ANTHROPIC_API_KEY not found in secrets or environment.")
+    return instructor.from_anthropic(
+        anthropic.Anthropic(api_key=anthropic_key)
     )
 
-
-model_name = "qwen/qwen3.8-27b"
-
+model_name = "claude-haiku-5-5"
 
 # 3. Graph Nodes
 
@@ -65,6 +58,7 @@ def parse_resume_node(state: AnalysisState):
     client = get_client()
     parsed_resume = client.chat.completions.create(
         model=model_name,
+        max_tokens=2048,
         response_model=ResumeProfile,
         messages=[
                     {
@@ -79,7 +73,7 @@ def parse_resume_node(state: AnalysisState):
                     },
                     {"role": "user", "content": f"Resume Text:\n{resume_content}"}
                 ],
-        temperature=0.0
+        # temperature=0.0
     )
     return {"parsed_resume": parsed_resume}
 
@@ -88,6 +82,7 @@ def parse_jd_node(state: AnalysisState):
     client = get_client()
     parsed_jd = client.chat.completions.create(
         model=model_name,
+        max_tokens=2048,
         response_model=JDProfile,
         messages=[
                     {
@@ -102,7 +97,7 @@ def parse_jd_node(state: AnalysisState):
                     },
                     {"role": "user", "content": f"Job Description:\n{jd_content}"}
                 ],
-        temperature=0.0
+        # temperature=0.0
     )
     return {"parsed_jd": parsed_jd}
 
@@ -120,6 +115,7 @@ def score_match_node(state: AnalysisState):
     client = get_client()
     gap_analysis = client.chat.completions.create(
         model=model_name,
+        max_tokens=2048,
         response_model=MatchScore,
 
     messages=[
@@ -141,7 +137,7 @@ def score_match_node(state: AnalysisState):
                 },
                 {"role": "user", "content": f"Candidate:\n{resume_data}\n\nJob Description:\n{jd_data}"}
             ],
-        temperature=0.0
+        # temperature=0.0
     )
     return {"score_data": gap_analysis}
 
@@ -149,6 +145,7 @@ def high_fit_branch_node(state: AnalysisState):
     client = get_client()
     report = client.chat.completions.create(
         model=model_name,
+        max_tokens=2048,
         response_model=StrategyReport,
         messages=[
             {
@@ -161,15 +158,47 @@ def high_fit_branch_node(state: AnalysisState):
             },
             {"role": "user", "content": f"Resume: {state['parsed_resume']}\nScore: {state['score_data']}"}
         ],
-        temperature=0.1
+        # temperature=0.1
     )
     return {"final_report": report}
 
 # Competitive Fit (50-79): Contextual bullet rewrites
+def low_fit_branch_node(state: AnalysisState):
+  client = get_client()
+  report = client.messages.create(
+      model=model_name,
+      max_tokens=3072,
+      response_model=StrategyReport,
+      messages=[
+          {
+              "role": "system",
+              "content": (
+                  "Candidate has a LOW FIT (<50). Set category='Low Fit (Pivot"
+                  " Needed)'. DO NOT provide bullet rewrites (keep list empty)."
+                  " Provide an honest appraisal: identify non-negotiable"
+                  " core_blockers, suggest 2-3 realistic stepping_stone_roles,"
+                  " and list prerequisite_projects_or_skills needed before"
+                  " targeting roles at this level. Return 'strategic_actions'"
+                  " as a native JSON array of strings, not a stringified JSON"
+                  " block."
+              ),
+          },
+          {
+              "role": "user",
+              "content": (
+                  f"Resume: {state['parsed_resume']}\nScore:"
+                  f" {state['score_data']}"
+              ),
+          },
+      ],
+  )
+  return {"final_report": report}
+
 def competitive_fit_branch_node(state: AnalysisState):
     client = get_client()
     report = client.chat.completions.create(
         model=model_name,
+        max_tokens=2048,
         response_model=StrategyReport,
         messages=[
             {
@@ -184,7 +213,7 @@ def competitive_fit_branch_node(state: AnalysisState):
             },
             {"role": "user", "content": f"Resume: {state['parsed_resume']}\nScore: {state['score_data']}"}
         ],
-        temperature=0.1
+        # temperature=0.1
     )
     return {"final_report": report}
 
@@ -193,6 +222,7 @@ def low_fit_branch_node(state: AnalysisState):
     client = get_client()
     report = client.chat.completions.create(
         model=model_name,
+        max_tokens=2048,
         response_model=StrategyReport,
         messages=[
             {
@@ -208,7 +238,7 @@ def low_fit_branch_node(state: AnalysisState):
             },
             {"role": "user", "content": f"Resume: {state['parsed_resume']}\nScore: {state['score_data']}"}
         ],
-        temperature=0.1
+        # temperature=0.1
     )
     return {"final_report": report}
 
