@@ -29,19 +29,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-with st.sidebar:
-    st.subheader("🔑 API Configuration")
-    user_groq_key = st.text_input(
-        "Enter your Groq API Key (Optional)",
-        type="password",
-        help="If the shared daily limit runs out, your personal free Groq key will be used instead.",
-        placeholder="gsk_..."
-    )
-    # NEW: Store the custom key in Streamlit session state so graph.py can access it
-    st.session_state["user_groq_key"] = user_groq_key.strip() if user_groq_key else None
-
-    # NEW: Helpful link for users who need a free key
-    st.markdown("[Get a free Groq API key here](https://console.groq.com/keys)")
     
 with st.form("jd"):
     # ask the user to upload a PDF file
