@@ -106,7 +106,6 @@ typing_extensions==4.16.0
 tzlocal==5.4.4
 urllib3==2.8.0
 uuid_utils==0.17.1
-uvicorn==0.53.0
 websockets==16.1.1
 xxhash==4.0.1
 yarl==1.25.1
