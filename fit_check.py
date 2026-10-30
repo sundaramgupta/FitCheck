@@ -30,19 +30,39 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+import re
+import requests
+
+
 def extract_text_from_url(url: str) -> str:
-    # Use Jina Reader as an engine to handle JS rendering and clean markdown extraction
+  """Fetches URL via reader engine with universal error suppression.
+
+  Returns empty string on any network, status, or parsing failure.
+  """
+  if not url or not url.strip():
+    return ""
+
+  try:
     clean_target = url.strip()
     reader_url = f"https://r.jina.ai/{clean_target}"
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "X-Return-Format": "markdown"
-    }
-    
-    response = requests.get(reader_url, headers=headers, timeout=15)
-    response.raise_for_status()
-    return response.text
+    headers = {"User-Agent": "Mozilla/5.0", "X-Return-Format": "markdown"}
+
+    response = requests.get(reader_url, headers=headers, timeout=12)
+
+    # Any 4xx/5xx status (like 403 Forbidden) will be caught below
+    if response.status_code != 200:
+      return ""
+
+    content = response.text.strip()
+
+    # Blocked / useless output check
+    if len(content) < 150:
+      return ""
+
+    return content
+  except Exception:
+    # All-time error masking: never crash the Streamlit runtime
+    return ""
 
 with st.form("jd"):
     # ask the user to upload a PDF file
@@ -56,6 +76,7 @@ with st.form("jd"):
     
 
 # ask the user for JD via URL or pasted text
+# ask the user for JD via URL or pasted text
     jd_url = st.text_input(
         "Paste Job URL (optional)",
         placeholder="https://boards.greenhouse.io/...",
@@ -66,19 +87,19 @@ with st.form("jd"):
     )
 
     txt = ""
+
     if jd_url.strip():
-        try:
-            txt = extract_text_from_url(jd_url)
-        except Exception:
-            st.warning(
-                "Could not extract from URL. Falling back to pasted text."
-            )
-            txt = pasted_jd
-    else:
-        txt = pasted_jd
-        
-    if jd_url.strip() and pasted_jd.strip():
-        st.info("ℹ️ Both URL and text provided. Using the URL by default.")
+      txt = extract_text_from_url(jd_url)
+      if not txt:
+        st.warning(
+            "⚠️ This career page (e.g., Google, Workday) blocks automated"
+            " access. Please paste the JD text directly below."
+        )
+        if pasted_jd.strip():
+          txt = pasted_jd.strip()
+    elif pasted_jd.strip():
+      txt = pasted_jd.strip()
+
 
 
 
