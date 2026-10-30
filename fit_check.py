@@ -3,7 +3,8 @@ import instructor
 from groq import Groq
 import os
 import re
-
+from bs4 import BeautifulSoup
+import requests
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -29,7 +30,20 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+def extract_text_from_url(url: str) -> str:
+    # Use Jina Reader as an engine to handle JS rendering and clean markdown extraction
+    clean_target = url.strip()
+    reader_url = f"https://r.jina.ai/{clean_target}"
     
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "X-Return-Format": "markdown"
+    }
+    
+    response = requests.get(reader_url, headers=headers, timeout=15)
+    response.raise_for_status()
+    return response.text
+
 with st.form("jd"):
     # ask the user to upload a PDF file
     uploaded_file = st.file_uploader("Upload your Resume (PDF)", type=".pdf")
@@ -40,9 +54,33 @@ with st.form("jd"):
     else:
         st.caption("Please upload a PDF file.")
     
-    # ask the user to paste the JD text
-    txt = st.text_area(
-        "Paste the JD here")
+
+# ask the user for JD via URL or pasted text
+    jd_url = st.text_input(
+        "Paste Job URL (optional)",
+        placeholder="https://boards.greenhouse.io/...",
+    )
+    pasted_jd = st.text_area(
+        "Or paste the JD here",
+        placeholder="Paste full text if no link or if link fails...",
+    )
+
+    txt = ""
+    if jd_url.strip():
+        try:
+            txt = extract_text_from_url(jd_url)
+        except Exception:
+            st.warning(
+                "Could not extract from URL. Falling back to pasted text."
+            )
+            txt = pasted_jd
+    else:
+        txt = pasted_jd
+        
+    if jd_url.strip() and pasted_jd.strip():
+        st.info("ℹ️ Both URL and text provided. Using the URL by default.")
+
+
 
     #present the JD text in a text area
     # st.text("Job Description: " + txt)
