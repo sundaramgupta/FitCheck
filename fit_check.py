@@ -116,7 +116,7 @@ with st.form("jd"):
     )
     pasted_jd = st.text_area(
         "Or paste the JD here",
-        placeholder="Paste full text if no link or if extraction fails...",
+        placeholder="Paste full text if no link or if extraction fails. If provided both, URL would take precedence over text provided",
     )
 
 
