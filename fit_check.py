@@ -13,12 +13,14 @@ from io import StringIO
 import pdfplumber
 from graph import app
 
+
 st.set_page_config(
     page_title="FitCheck",
     page_icon="📃",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
 
 st.markdown(
     """
@@ -30,39 +32,70 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
 import re
 import requests
+
+
 
 
 def extract_text_from_url(url: str) -> str:
   """Fetches URL via reader engine with universal error suppression.
 
+
   Returns empty string on any network, status, or parsing failure.
   """
+
+
   if not url or not url.strip():
     return ""
+
 
   try:
     clean_target = url.strip()
     reader_url = f"https://r.jina.ai/{clean_target}"
-    headers = {"User-Agent": "Mozilla/5.0", "X-Return-Format": "markdown"}
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "X-Return-Format": "markdown",
+        "X-Remove-Selector": "nav, header, footer",
+        "X-Retain-Images": "none",
+    }
+
+
 
     response = requests.get(reader_url, headers=headers, timeout=12)
+
+    # response = requests.get(reader_url, headers=headers, timeout=12)
+    # st.write("DEBUG status:", response.status_code, "| length:", len(response.text))  # TEMP DEBUG
+
+
+    # Any 4xx/5xx status (like 403 Forbidden) will be caught below
+    if response.status_code != 200:
+    #   st.write("DEBUG body:", response.text[:500])  # TEMP DEBUG
+      return ""
+
+
 
     # Any 4xx/5xx status (like 403 Forbidden) will be caught below
     if response.status_code != 200:
       return ""
 
+
     content = response.text.strip()
+
 
     # Blocked / useless output check
     if len(content) < 150:
+    #   st.write("DEBUG body: short", content)  # TEMP DEBUG
       return ""
+
 
     return content
   except Exception:
     # All-time error masking: never crash the Streamlit runtime
+    # st.write("DEBUG exception:", repr(e))  # TEMP DEBUG
     return ""
+
 
 with st.form("jd"):
     # ask the user to upload a PDF file
@@ -73,7 +106,8 @@ with st.form("jd"):
             text = "\n".join([page.extract_text() or "" for page in pdf.pages])
     else:
         st.caption("Please upload a PDF file.")
-    
+   
+
 
 # ask the user for JD via URL or pasted text
     jd_url = st.text_input(
@@ -85,34 +119,44 @@ with st.form("jd"):
         placeholder="Paste full text if no link or if extraction fails...",
     )
 
+
     txt = ""
     is_url_input = False
     link_failed = False
 
-    # If the user pasted text, ALWAYS prioritize it over any URL
-    if pasted_jd.strip():
-      txt = pasted_jd.strip()
-      is_url_input = False
-      link_failed = False
-    elif jd_url.strip():
-      txt = extract_text_from_url(jd_url)
-      if txt:
-        is_url_input = True
-      else:
-        link_failed = True
+
+
+    # 1. Try extracting URL if provided
+    if jd_url.strip():
+        txt = extract_text_from_url(jd_url)
+        if txt:
+            is_url_input = True
+        else:
+            link_failed = True
+
+
+    # 2. Check pasted text if URL was empty or failed
+    if not txt and pasted_jd.strip():
+        txt = pasted_jd.strip()
+        is_url_input = False
+        link_failed = False
+
 
     # TO DEBUG: Print the extracted data from the URL
-    # if txt.strip():
-    #     with st.expander("📄 View Extracted JD Preview", expanded=False):
-    #         st.caption(f"Total extracted length: {len(txt)} characters")
-    #         st.text_area(
-    #             "Extracted Text", value=txt, height=200, disabled=True, label_visibility="collapsed"
-    #         )
-    
+
+    if is_url_input and txt.strip():
+        with st.expander("📄 View Extracted JD Preview", expanded=False):
+            st.caption(f"Total extracted length: {len(txt)} characters")
+            st.text_area(
+                "Extracted Text", value=txt, height=200, disabled=True, label_visibility="collapsed"
+            )
     submitted = st.form_submit_button("Submit")
     if submitted:
         if not uploaded_file:
             st.error("Please upload your resume (PDF).")
+        # FIX: scanned/image PDFs have no text, so stop here instead of calling the LLM
+        elif not text.strip():
+            st.error("Our system couldn't read any text from your PDF 😓. If it's a scanned image, please upload a text-based PDF 🙏🏻.")
         elif link_failed and not txt:
             st.error(
                 "⚠️ Could not extract job details from this link. Please copy and paste"
@@ -122,19 +166,28 @@ with st.form("jd"):
             st.error("Our system has figured you haven't provided a JD! 😡 (paste a link or paste text).")
         else:
 
-        
+
+       
             with st.spinner("Analyzing your profile... It could take about a minute."):
                 try:
-                    final_state = app.invoke({"resume_text": text, "jd_text": txt})
+                    # FIX: also pass the pasted JD so the graph can fall back to it if the link content is junk
+                    final_state = app.invoke({
+                        "resume_text": text,
+                        "jd_text": txt,
+                        "pasted_jd_text": pasted_jd.strip(),
+                        "is_url_input": is_url_input,
+                    })
                     final_jd = final_state.get("parsed_jd")
                     final_resume = final_state.get("parsed_resume")
+
 
                     if not final_resume or not final_jd:
                         st.error("Unable to parse documents. Please ensure valid text is provided.")
                     elif final_resume.errors and final_jd.errors:
                         st.error("Our model has found out you did not uploaded either a proper Resume or a proper JD. Do not mess around 😡!")
                     elif final_jd.errors:
-                            if is_url_input:
+                            # FIX: if the graph fell back to the pasted JD, show the pasted-JD message
+                            if is_url_input and not final_state.get("jd_fallback_used"):
                                 st.error(
                                     "Could not extract a valid job description from this link ))."
                                     " Please copy and paste the JD text directly instead to make it easier for us 🙏🏻😓."
@@ -147,22 +200,27 @@ with st.form("jd"):
                         score_data = final_state.get("score_data")
                         report_data = final_state.get("final_report")
 
+
                         if not score_data or not report_data:
                             st.error("Unable to generate evaluation. Please check your inputs.")
                         else:
                             st.success("Successfully analyzed the data!")
 
+
                                                     # NEW: Display the 3-Tier Score Metrics
                             st.header(f"📊 Fit Assessment: {report_data.category}", divider="gray")
                             st.metric(label="Overall Role Alignment", value=f"{score_data.total_score} / 100")
+
 
                             col1, col2, col3 = st.columns(3)
                             col1.metric("Hard Skills (40%)", f"{score_data.hard_skills_score} / 40")
                             col2.metric("Competency Proof (40%)", f"{score_data.competency_score} / 40")
                             col3.metric("Seniority & Scope (20%)", f"{score_data.seniority_score} / 20")
 
+
                             st.info(score_data.quick_summary)
                             st.divider()
+
 
                             # NEW: Competency Audit Section (Evidence-based soft/hard skill inspection)
                             st.subheader("🔍 Competency & Evidence Audit")
@@ -171,6 +229,7 @@ with st.form("jd"):
                                 icon = "🟢" if item.status == "Demonstrated in Experience" else "🟡" if item.status == "Partially Supported" else "🔴"
                                 with st.expander(f"{icon} {item.competency} — {item.status}"):
                                     st.markdown(f"**Evidence from Resume:** {item.evidence_citation}")
+
 
                             # NEW: High & Competitive Fit Branches (Contextual Bullet Rewrites)
                             if report_data.bullet_rewrites:
@@ -182,10 +241,12 @@ with st.form("jd"):
                                         st.markdown(f"**Tailored Recommendation:**\n> {rw.rewritten_bullet}")
                                         st.success(f"**Why this lands:** {rw.why_it_works}")
 
+
                             # NEW: Low Fit Branch (< 50) -> Career Pivot Guidance
                             if report_data.pivot_guidance:
                                 st.warning("⚠️ **Realistic Career Advisory: Direct Pivot Recommended**")
                                 st.markdown(f"**Strategic Takeaway:** {report_data.headline}")
+
 
                                 col_block, col_stone = st.columns(2)
                                 with col_block:
@@ -197,15 +258,18 @@ with st.form("jd"):
                                     for role in report_data.pivot_guidance.stepping_stone_roles:
                                         st.markdown(f"- **{role}**")
 
+
                                 st.subheader("🛠️ High-Impact Prerequisite Projects")
                                 for proj in report_data.pivot_guidance.prerequisite_projects_or_skills:
                                     st.markdown(f"- {proj}")
+
 
                             # NEW: Strategic Action Recommendations
                             if report_data.strategic_actions:
                                 st.header("🎯 Strategic Next Steps", divider="gray")
                                 for act in report_data.strategic_actions:
                                     st.markdown(f"- {act}")
+
 
                 except Exception as e:
                     err_str = str(e)
@@ -221,3 +285,6 @@ with st.form("jd"):
                         )
                     else:
                         st.error(f"⚠️ An unexpected error occurred: {err_str}")
+
+
+

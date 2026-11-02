@@ -10,6 +10,7 @@ import anthropic
 import os
 import itertools
 
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -18,13 +19,21 @@ from io import StringIO
 import pdfplumber
 from pydantic import BaseModel, EmailStr, Field
 
+
 from schemas import JDProfile, ResumeProfile, MatchScore, StrategyReport
+
 
 # state defination
 class AnalysisState(TypedDict):
 
+
     resume_text: str
     jd_text: str
+    # FIX: extra inputs/outputs for falling back to the pasted JD when the link content is junk
+    pasted_jd_text: str
+    is_url_input: bool
+    jd_fallback_used: bool
+
 
     # taking the data from the pydantic formats
     parsed_resume: Optional[ResumeProfile]
@@ -33,8 +42,11 @@ class AnalysisState(TypedDict):
     final_report: Optional[StrategyReport]
 
 
+
+
 def get_client():
   api_key = None
+
 
   # Look in Streamlit secrets first
   try:
@@ -43,9 +55,11 @@ def get_client():
   except Exception:
     pass
 
+
   # Fallback to system environment variable
   if not api_key:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
+
 
   if not api_key:
     raise ValueError(
@@ -53,17 +67,26 @@ def get_client():
         " variables."
     )
 
+
   return instructor.from_anthropic(anthropic.Anthropic(api_key=api_key))
+
+
 
 
 model_name = "claude-haiku-5-5"
 
 
+
+
 # 3. Graph Nodes
+
 
 def parse_resume_node(state: AnalysisState):
 
-    resume_content = state["resume_text"][:3800]
+
+    # FIX: was [:3800], which cut long resumes mid-way and caused false errors=True
+    resume_content = state["resume_text"][:12000]
+
 
     client = get_client()
     parsed_resume = client.chat.completions.create(
@@ -88,8 +111,10 @@ def parse_resume_node(state: AnalysisState):
     )
     return {"parsed_resume": parsed_resume}
 
+
 def parse_jd_node(state: AnalysisState):
-    jd_content = state["jd_text"][:2800]
+    # FIX: was [:2800]; link pages start with menus/banners, so the real JD was often cut off
+    jd_content = state["jd_text"][:15000]
     client = get_client()
     parsed_jd = client.chat.completions.create(
         model=model_name,
@@ -112,24 +137,54 @@ def parse_jd_node(state: AnalysisState):
                 ],
         # temperature=0.0
     )
+
+    # FIX: link content wasn't a valid JD, but the user also pasted a JD -> try the pasted text
+    pasted_jd_text = state.get("pasted_jd_text", "")
+    if parsed_jd.errors and state.get("is_url_input") and pasted_jd_text:
+        parsed_jd = client.chat.completions.create(
+            model=model_name,
+            max_tokens=4096,
+            response_model=JDProfile,
+            messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                    "You are an uncompromising hiring bar raiser. Extract the true non-negotiable requirements from the job description."
+                                    "CRITICAL EXTRACTION RULES:"
+                                    "1. Extract strict, non-negotiable technologies, tools, and domain requirements into 'required_hard_skills'."
+                                    "2. Extract required operational scope, ownership tier, and execution responsibilities into 'required_competencies'."
+                                    "3. Do not soften or generalize specialized requirements (e.g., keep 'ASIC physical design' or 'distributed systems kernels' exact; do not reduce them to 'general coding')."
+                                    "4. If the input is gibberish, an advertisement, or clearly not a job description, set errors=True."
+                            )
+                        },
+                        {"role": "user", "content": f"Job Description:\n{pasted_jd_text[:15000]}"}
+                    ],
+        )
+        return {"parsed_jd": parsed_jd, "jd_fallback_used": True}
+
     return {"parsed_jd": parsed_jd}
+
 
 #  3-Tier Weighted Scoring & Evidence Audit Node
 
+
 def score_match_node(state: AnalysisState):
+
 
     resume_data = state["parsed_resume"]
     jd_data = state["parsed_jd"]
 
+
     # if the output is not proper, do not run the llm
     if not resume_data or not jd_data or resume_data.errors or jd_data.errors:
             return {"score_data": None}
-    
+   
     client = get_client()
     gap_analysis = client.chat.completions.create(
         model=model_name,
         max_tokens=4096,
         response_model=MatchScore,
+
 
     messages=[
                 {
@@ -163,7 +218,10 @@ def score_match_node(state: AnalysisState):
             ],
         # temperature=0.0
     )
+    # FIX: the LLM's total doesn't always equal the sum of the 3 parts; recompute it
+    gap_analysis.total_score = gap_analysis.hard_skills_score + gap_analysis.competency_score + gap_analysis.seniority_score
     return {"score_data": gap_analysis}
+
 
 def high_fit_branch_node(state: AnalysisState):
     client = get_client()
@@ -180,11 +238,13 @@ def high_fit_branch_node(state: AnalysisState):
                         "Select 2 work_history bullets and rewrite them strictly to maximize executive ownership, measurable business leverage, and technical rigor without fabricating experience or adding buzzwords."
                 )
             },
-            {"role": "user", "content": f"Resume: {state['parsed_resume']}\nScore: {state['score_data']}"}
+            # FIX: the JD was never sent here, so rewrites couldn't target the role
+            {"role": "user", "content": f"Resume: {state['parsed_resume']}\nJob Description: {state['parsed_jd']}\nScore: {state['score_data']}"}
         ],
         # temperature=0.1
     )
     return {"final_report": report}
+
 
 # Competitive Fit (50-79): Contextual bullet rewrites
 def competitive_fit_branch_node(state: AnalysisState):
@@ -203,11 +263,13 @@ def competitive_fit_branch_node(state: AnalysisState):
                         "Select 2-3 specific work_history bullets where real experience is undersold. Rewrite them to crisply emphasize the required JD competencies using quantifiable metrics and action-impact framing. Do not fabricate unperformed work."
                 )
             },
-            {"role": "user", "content": f"Resume: {state['parsed_resume']}\nScore: {state['score_data']}"}
+            # FIX: the JD was never sent here, so "required JD competencies" were unknown to the model
+            {"role": "user", "content": f"Resume: {state['parsed_resume']}\nJob Description: {state['parsed_jd']}\nScore: {state['score_data']}"}
         ],
         # temperature=0.1
     )
     return {"final_report": report}
+
 
 # Low Fit (< 50): Career pivot & stepping-stone advice
 def low_fit_branch_node(state: AnalysisState):
@@ -229,16 +291,19 @@ def low_fit_branch_node(state: AnalysisState):
                         "3. List 2-3 mandatory prerequisite_projects_or_skills they must complete before targeting this tier."
                 )
             },
-            {"role": "user", "content": f"Resume: {state['parsed_resume']}\nScore: {state['score_data']}"}
+            # FIX: the JD was never sent here, so blockers/stepping stones weren't role-specific
+            {"role": "user", "content": f"Resume: {state['parsed_resume']}\nJob Description: {state['parsed_jd']}\nScore: {state['score_data']}"}
         ],
         # temperature=0.1
     )
     return {"final_report": report}
 
+
 def route_by_score(state: AnalysisState):
     score_data = state.get("score_data")
     if not score_data:
         return END
+
 
     score = score_data.total_score
     if score >= 80:
@@ -249,7 +314,9 @@ def route_by_score(state: AnalysisState):
         return "low_fit"
 # 4. Graph Construction & Compilation
 
+
 workflow = StateGraph(AnalysisState)
+
 
 workflow.add_node("parse_resume", parse_resume_node)
 workflow.add_node("parse_jd", parse_jd_node)
@@ -258,13 +325,17 @@ workflow.add_node("high_fit", high_fit_branch_node)
 workflow.add_node("competitive_fit", competitive_fit_branch_node)
 workflow.add_node("low_fit", low_fit_branch_node)
 
+
 # start together
 workflow.add_edge(START, "parse_resume")
 workflow.add_edge(START, "parse_jd")
 
 
+
+
 workflow.add_edge("parse_resume", "score_match")
 workflow.add_edge("parse_jd", "score_match")
+
 
 workflow.add_conditional_edges(
     "score_match",
@@ -278,8 +349,13 @@ workflow.add_conditional_edges(
 )
 
 
+
+
 workflow.add_edge("high_fit", END)
 workflow.add_edge("competitive_fit", END)
 workflow.add_edge("low_fit", END)
 
+
 app = workflow.compile()
+
+
