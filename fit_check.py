@@ -89,18 +89,17 @@ with st.form("jd"):
     is_url_input = False
     link_failed = False
 
-    if jd_url.strip():
+    # If the user pasted text, ALWAYS prioritize it over any URL
+    if pasted_jd.strip():
+      txt = pasted_jd.strip()
+      is_url_input = False
+      link_failed = False
+    elif jd_url.strip():
       txt = extract_text_from_url(jd_url)
       if txt:
         is_url_input = True
       else:
         link_failed = True
-        if pasted_jd.strip():
-          txt = pasted_jd.strip()
-          is_url_input = False
-    elif pasted_jd.strip():
-      txt = pasted_jd.strip()
-      is_url_input = False
 
     # TO DEBUG: Print the extracted data from the URL
     # if txt.strip():
