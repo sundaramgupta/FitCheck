@@ -144,12 +144,12 @@ with st.form("jd"):
 
     # TO DEBUG: Print the extracted data from the URL
 
-    if is_url_input and txt.strip():
-        with st.expander("📄 View Extracted JD Preview", expanded=False):
-            st.caption(f"Total extracted length: {len(txt)} characters")
-            st.text_area(
-                "Extracted Text", value=txt, height=200, disabled=True, label_visibility="collapsed"
-            )
+    # if is_url_input and txt.strip():
+    #     with st.expander("📄 View Extracted JD Preview", expanded=False):
+    #         st.caption(f"Total extracted length: {len(txt)} characters")
+    #         st.text_area(
+    #             "Extracted Text", value=txt, height=200, disabled=True, label_visibility="collapsed"
+    #         )
     submitted = st.form_submit_button("Submit")
     if submitted:
         if not uploaded_file:
