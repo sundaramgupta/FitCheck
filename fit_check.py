@@ -76,43 +76,55 @@ with st.form("jd"):
     
 
 # ask the user for JD via URL or pasted text
-# ask the user for JD via URL or pasted text
     jd_url = st.text_input(
         "Paste Job URL (optional)",
         placeholder="https://boards.greenhouse.io/...",
     )
     pasted_jd = st.text_area(
         "Or paste the JD here",
-        placeholder="Paste full text if no link or if link fails...",
+        placeholder="Paste full text if no link or if extraction fails...",
     )
 
     txt = ""
+    is_url_input = False
+    link_failed = False
 
     if jd_url.strip():
       txt = extract_text_from_url(jd_url)
-      if not txt:
-        st.warning(
-            "⚠️ This career page (e.g., Google, Workday) blocks automated"
-            " access. Please paste the JD text directly below."
-        )
+      if txt:
+        is_url_input = True
+      else:
+        link_failed = True
         if pasted_jd.strip():
           txt = pasted_jd.strip()
+          is_url_input = False
     elif pasted_jd.strip():
       txt = pasted_jd.strip()
+      is_url_input = False
 
-
-
-
-    #present the JD text in a text area
-    # st.text("Job Description: " + txt)
+    # TO DEBUG: Print the extracted data from the URL
+    # if txt.strip():
+    #     with st.expander("📄 View Extracted JD Preview", expanded=False):
+    #         st.caption(f"Total extracted length: {len(txt)} characters")
+    #         st.text_area(
+    #             "Extracted Text", value=txt, height=200, disabled=True, label_visibility="collapsed"
+    #         )
+    
     submitted = st.form_submit_button("Submit")
     if submitted:
-        
-        # api_key = os.environ.get("GROQ_API_KEY") 
+        if not uploaded_file:
+            st.error("Please upload your resume (PDF).")
+        elif link_failed and not txt:
+            st.error(
+                "⚠️ Could not extract job details from this link. Please copy and paste"
+                " the JD text directly below to make it easier for us 🙏🏻😓."
+            )
+        elif not txt:
+            st.error("Our system has figured you haven't provided a JD! 😡 (paste a link or paste text).")
+        else:
 
-        if txt and uploaded_file:
-    
-            with st.spinner("Analyzing resume and job description..."):
+        
+            with st.spinner("Analyzing your profile... It could take about a minute."):
                 try:
                     final_state = app.invoke({"resume_text": text, "jd_text": txt})
                     final_jd = final_state.get("parsed_jd")
@@ -123,9 +135,15 @@ with st.form("jd"):
                     elif final_resume.errors and final_jd.errors:
                         st.error("Our model has found out you did not uploaded either a proper Resume or a proper JD. Do not mess around 😡!")
                     elif final_jd.errors:
-                        st.error("Our model has found out you did not pasted a proper JD 😡!")
+                            if is_url_input:
+                                st.error(
+                                    "Could not extract a valid job description from this link ))."
+                                    " Please copy and paste the JD text directly instead to make it easier for us 🙏🏻😓."
+                                )
+                            else:
+                                st.error("Our system has found out you did not paste a proper JD 😡.")
                     elif final_resume.errors:
-                        st.error("Our model has found out you did not uploaded a proper Resume 😡!")
+                        st.error("Our system has found out you did not upload a proper Resume 😡!")
                     else:
                         score_data = final_state.get("score_data")
                         report_data = final_state.get("final_report")
@@ -204,5 +222,3 @@ with st.form("jd"):
                         )
                     else:
                         st.error(f"⚠️ An unexpected error occurred: {err_str}")
-        else:
-            st.error("Please add both Resume and JD!!")
