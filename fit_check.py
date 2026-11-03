@@ -106,6 +106,7 @@ METER_CSS = """<style>
 .fc-meter-track{height:10px;border-radius:5px;overflow:hidden;}
 .fc-meter-fill{height:100%;border-radius:5px;animation:fc-fill 1.2s cubic-bezier(.22,1,.36,1) backwards;}
 @keyframes fc-fill{from{width:0;}}
+.fc-meter-fill{animation-play-state:paused;}
 </style>"""
 
 RING_CSS = """<style>
@@ -117,6 +118,7 @@ RING_CSS = """<style>
 .fc-ring-num::after{content:counter(fc);}
 .fc-ring-of{font-size:0.95rem;opacity:0.6;margin-top:2px;}
 .fc-ring-label{text-align:center;font-size:0.95rem;opacity:0.75;margin-bottom:18px;}
+.fc-ring-wrap,.fc-ring-fill,.fc-ring-num{animation-play-state:paused;}
 @keyframes fc-ring{from{stroke-dashoffset:var(--fc-len);}}
 @keyframes fc-count{from{--fc-num:0;}}
 @keyframes fc-pop{from{opacity:0;transform:scale(.92);}}
@@ -165,24 +167,21 @@ def render_score_meter(label, score, max_score, delay=0.0):  # FIX
 
 
 def scroll_to_score():  # FIX
-    # Scrolls the page to the score ring once results render, then replays the
-    # ring/bar animations so the user sees them instead of a finished state.
+    # Scrolls the page to the score ring once results render, then starts the
+    # ring/bar animations (they wait paused on their first frame until then).
     components.html(
         """
 <script>
 const doc = window.parent.document;
+const start = () => doc
+  .querySelectorAll('.fc-ring-wrap, .fc-ring-fill, .fc-ring-num, .fc-meter-fill')
+  .forEach((el) => { el.style.animationPlayState = 'running'; });
 const ring = doc.querySelector('.fc-ring-wrap');
 if (ring) {
   ring.scrollIntoView({behavior: 'smooth', block: 'center'});
-  setTimeout(() => {
-    doc.querySelectorAll('.fc-ring-wrap, .fc-ring-fill, .fc-ring-num, .fc-meter-fill').forEach((el) => {
-      const delay = el.style.animationDelay;
-      el.style.animation = 'none';
-      el.getBoundingClientRect();
-      el.style.animation = '';
-      el.style.animationDelay = delay;
-    });
-  }, 500);
+  setTimeout(start, 600);
+} else {
+  start();
 }
 </script>
 """,
