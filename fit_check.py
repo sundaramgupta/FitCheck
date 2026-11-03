@@ -3,7 +3,6 @@ import instructor
 from groq import Groq
 import os
 import re
-import time  # FIX: used by the score count-up animation
 import html  # FIX: escapes LLM text shown inside the audit cards
 from bs4 import BeautifulSoup
 import requests
@@ -99,35 +98,54 @@ def extract_text_from_url(url: str) -> str:
     return ""
 
 
-# FIX: score visuals (count-up total score + animated sub-score bars)
+# FIX: score visuals (animated score ring + staggered sub-score bars)
 METER_CSS = """<style>
 .fc-meter{margin:6px 0 14px;}
 .fc-meter-head{display:flex;justify-content:space-between;font-size:0.95rem;margin-bottom:6px;}
 .fc-meter-track{height:10px;border-radius:5px;overflow:hidden;}
-.fc-meter-fill{height:100%;border-radius:5px;animation:fc-fill 1.2s ease-out;}
+.fc-meter-fill{height:100%;border-radius:5px;animation:fc-fill 1.2s cubic-bezier(.22,1,.36,1) backwards;}
 @keyframes fc-fill{from{width:0;}}
 </style>"""
 
-
-def hero_score_html(label, value):  # FIX
-    return (
-        '<div style="text-align:center;margin:8px 0 16px;">'
-        f'<div style="font-size:0.95rem;opacity:0.7;">{label}</div>'
-        f'<div style="font-size:56px;font-weight:600;line-height:1.1;">{value}'
-        '<span style="font-size:24px;opacity:0.6;"> / 100</span></div>'
-        '</div>'
-    )
+RING_CSS = """<style>
+@property --fc-num{syntax:'<integer>';initial-value:0;inherits:false;}
+.fc-ring-wrap{position:relative;width:190px;height:190px;margin:10px auto 2px;animation:fc-pop .6s cubic-bezier(.22,1,.36,1) backwards;}
+.fc-ring-fill{animation:fc-ring 1.6s cubic-bezier(.22,1,.36,1) .15s backwards;}
+.fc-ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.fc-ring-num{font-size:52px;font-weight:600;line-height:1;--fc-num:var(--fc-target);counter-reset:fc var(--fc-num);animation:fc-count 1.6s cubic-bezier(.22,1,.36,1) .15s backwards;}
+.fc-ring-num::after{content:counter(fc);}
+.fc-ring-of{font-size:0.95rem;opacity:0.6;margin-top:2px;}
+.fc-ring-label{text-align:center;font-size:0.95rem;opacity:0.75;margin-bottom:18px;}
+@keyframes fc-ring{from{stroke-dashoffset:var(--fc-len);}}
+@keyframes fc-count{from{--fc-num:0;}}
+@keyframes fc-pop{from{opacity:0;transform:scale(.92);}}
+</style>"""
 
 
 def animate_hero_score(label, score):  # FIX
-    placeholder = st.empty()
-    steps = 25
-    for i in range(1, steps + 1):
-        placeholder.markdown(hero_score_html(label, round(score * i / steps)), unsafe_allow_html=True)
-        time.sleep(0.03)
+    radius = 54
+    length = 2 * 3.14159 * radius
+    offset = length * (1 - max(0, min(score, 100)) / 100)
+    # same cut-offs as the fit routing in graph.py (80 / 50)
+    color = "#0ca30c" if score >= 80 else "#fab219" if score >= 50 else "#d03b3b"
+    st.markdown(RING_CSS, unsafe_allow_html=True)
+    st.markdown(
+        '<div class="fc-ring-wrap">'
+        '<svg viewBox="0 0 140 140" width="190" height="190">'
+        f'<circle cx="70" cy="70" r="{radius}" fill="none" stroke="{color}2e" stroke-width="12"/>'
+        f'<circle class="fc-ring-fill" cx="70" cy="70" r="{radius}" fill="none" stroke="{color}" stroke-width="12" '
+        f'stroke-linecap="round" stroke-dasharray="{length:.2f}" stroke-dashoffset="{offset:.2f}" '
+        f'transform="rotate(-90 70 70)" style="--fc-len:{length:.2f};"/>'
+        '</svg>'
+        f'<div class="fc-ring-center"><div class="fc-ring-num" style="--fc-target:{score};"></div>'
+        '<div class="fc-ring-of">/ 100</div></div>'
+        '</div>'
+        f'<div class="fc-ring-label">{label}</div>',
+        unsafe_allow_html=True,
+    )
 
 
-def render_score_meter(label, score, max_score):  # FIX
+def render_score_meter(label, score, max_score, delay=0.0):  # FIX
     ratio = score / max_score if max_score else 0
     if ratio >= 0.75:
         fill, status = "#2a78d6", "✅ Strong"
@@ -139,7 +157,7 @@ def render_score_meter(label, score, max_score):  # FIX
         '<div class="fc-meter">'
         f'<div class="fc-meter-head"><span>{label}</span><span>{score} / {max_score} · {status}</span></div>'
         f'<div class="fc-meter-track" style="background:{fill}33;">'
-        f'<div class="fc-meter-fill" style="width:{ratio * 100:.0f}%;background:{fill};"></div>'
+        f'<div class="fc-meter-fill" style="width:{ratio * 100:.0f}%;background:{fill};animation-delay:{delay}s;"></div>'
         '</div></div>',
         unsafe_allow_html=True,
     )
@@ -333,9 +351,9 @@ with st.form("jd"):
 
 
                                 st.markdown(METER_CSS, unsafe_allow_html=True)
-                                render_score_meter("Hard Skills (40%)", score_data.hard_skills_score, 40)
-                                render_score_meter("Competency Proof (40%)", score_data.competency_score, 40)
-                                render_score_meter("Seniority & Scope (20%)", score_data.seniority_score, 20)
+                                render_score_meter("Hard Skills (40%)", score_data.hard_skills_score, 40, delay=0.6)
+                                render_score_meter("Competency Proof (40%)", score_data.competency_score, 40, delay=0.8)
+                                render_score_meter("Seniority & Scope (20%)", score_data.seniority_score, 20, delay=1.0)
 
 
                                 st.info(score_data.quick_summary)
