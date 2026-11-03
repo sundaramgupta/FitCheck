@@ -4,6 +4,7 @@ from groq import Groq
 import os
 import re
 import time  # FIX: used by the score count-up animation
+import html  # FIX: escapes LLM text shown inside the audit cards
 from bs4 import BeautifulSoup
 import requests
 import streamlit as st
@@ -144,6 +145,59 @@ def render_score_meter(label, score, max_score):  # FIX
     )
 
 
+# FIX: competency audit visuals (composition bar + status tabs + evidence cards)
+AUDIT_CSS = """<style>
+.fc-comp-bar{display:flex;gap:2px;height:12px;width:100%;margin:4px 0 8px;overflow:hidden;border-radius:6px;animation:fc-fill 1.2s ease-out;}
+.fc-comp-seg{height:100%;}
+.fc-legend{display:flex;gap:18px;flex-wrap:wrap;font-size:0.9rem;margin-bottom:12px;}
+.fc-card{border-left:4px solid var(--fc-c);background:rgba(128,128,128,0.08);border-radius:8px;padding:10px 14px;margin:8px 0;}
+.fc-card-title{font-weight:600;margin-bottom:4px;}
+.fc-card-body{font-size:0.92rem;opacity:0.85;line-height:1.45;}
+</style>"""
+
+# (status from the model, icon, color, short label) in display order: gaps first
+AUDIT_GROUPS = [
+    ("Missing", "🔴", "#d03b3b", "Missing"),
+    ("Partially Supported", "🟡", "#fab219", "Partially supported"),
+    ("Demonstrated in Experience", "🟢", "#0ca30c", "Demonstrated"),
+]
+
+
+def render_competency_audit(competency_audit):  # FIX
+    known = {"Partially Supported", "Demonstrated in Experience"}
+    grouped = {status: [] for status, _, _, _ in AUDIT_GROUPS}
+    for item in competency_audit:
+        # anything other than green/yellow counts as Missing (same as the old icon logic)
+        grouped[item.status if item.status in known else "Missing"].append(item)
+
+    st.markdown(AUDIT_CSS, unsafe_allow_html=True)
+
+    segments = "".join(
+        f'<div class="fc-comp-seg" style="flex:{len(grouped[status])};background:{color};"></div>'
+        for status, _, color, _ in reversed(AUDIT_GROUPS)
+        if grouped[status]
+    )
+    legend = "".join(
+        f"<span>{icon} {label}: <b>{len(grouped[status])}</b></span>"
+        for status, icon, _, label in reversed(AUDIT_GROUPS)
+    )
+    st.markdown(f'<div class="fc-comp-bar">{segments}</div><div class="fc-legend">{legend}</div>', unsafe_allow_html=True)
+
+    tabs = st.tabs([f"{icon} {label} ({len(grouped[status])})" for status, icon, _, label in AUDIT_GROUPS])
+    for tab, (status, _, color, _) in zip(tabs, AUDIT_GROUPS):
+        with tab:
+            if not grouped[status]:
+                st.caption("Nothing in this group.")
+            for item in grouped[status]:
+                st.markdown(
+                    f'<div class="fc-card" style="--fc-c:{color};">'
+                    f'<div class="fc-card-title">{html.escape(item.competency)}</div>'
+                    f'<div class="fc-card-body"><b>Evidence from Resume:</b> {html.escape(item.evidence_citation)}</div>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+
+
 with st.form("jd"):
     # ask the user to upload a PDF file
     uploaded_file = st.file_uploader("Upload your Resume (PDF)", type=".pdf")
@@ -199,148 +253,142 @@ with st.form("jd"):
     #         )
     submitted = st.form_submit_button("Submit")
     if submitted:
-        if not uploaded_file:
-            st.error("Please upload your resume (PDF).")
-        # FIX: scanned/image PDFs have no text, so stop here instead of calling the LLM
-        elif not text.strip():
-            st.error("Our system couldn't read any text from your PDF 😓. If it's a scanned image, please upload a text-based PDF 🙏🏻.")
-        elif link_failed and not txt:
-            st.error(
-                "⚠️ Could not extract job details from this link. Please copy and paste"
-                " the JD text directly below to make it easier for us 🙏🏻😓."
-            )
-        elif not txt:
-            st.error("Our system has figured you haven't provided a JD! 😡 (paste a link or paste text).")
-        else:
+        # FIX: one placeholder for all output, so the previous run's error/results clear as soon as Submit is pressed
+        output_area = st.empty()
+        with output_area.container():  # FIX
+            if not uploaded_file:
+                st.error("Please upload your resume (PDF).")
+            # FIX: scanned/image PDFs have no text, so stop here instead of calling the LLM
+            elif not text.strip():
+                st.error("Our system couldn't read any text from your PDF 😓. If it's a scanned image, please upload a text-based PDF 🙏🏻.")
+            elif link_failed and not txt:
+                st.error(
+                    "⚠️ Could not extract job details from this link. Please copy and paste"
+                    " the JD text directly below to make it easier for us 🙏🏻😓."
+                )
+            elif not txt:
+                st.error("Our system has figured you haven't provided a JD! 😡 (paste a link or paste text).")
+            else:
 
 
        
-            with st.spinner("Analyzing your profile... It could take about a minute."):
-                try:
-                    # FIX: also pass the pasted JD so the graph can fall back to it if the link content is junk
-                    final_state = app.invoke({
-                        "resume_text": text,
-                        "jd_text": txt,
-                        "pasted_jd_text": pasted_jd.strip(),
-                        "is_url_input": is_url_input,
-                    })
-                    final_jd = final_state.get("parsed_jd")
-                    final_resume = final_state.get("parsed_resume")
+                with st.spinner("Analyzing your profile... It could take about a minute."):
+                    try:
+                        # FIX: also pass the pasted JD so the graph can fall back to it if the link content is junk
+                        final_state = app.invoke({
+                            "resume_text": text,
+                            "jd_text": txt,
+                            "pasted_jd_text": pasted_jd.strip(),
+                            "is_url_input": is_url_input,
+                        })
+                        final_jd = final_state.get("parsed_jd")
+                        final_resume = final_state.get("parsed_resume")
 
 
-                    if not final_resume or not final_jd:
-                        st.error("Unable to parse documents. Please ensure valid text is provided.")
-                    elif final_resume.errors and final_jd.errors:
-                        st.error("Our model has found out you did not uploaded either a proper Resume or a proper JD. Do not mess around 😡!")
-                    elif final_jd.errors:
-                            # FIX: if the graph fell back to the pasted JD, show the pasted-JD message
-                            if is_url_input and not final_state.get("jd_fallback_used"):
-                                st.error(
-                                    "Could not extract a valid job description from this link ))."
-                                    " Please copy and paste the JD text directly instead to make it easier for us 🙏🏻😓."
-                                )
-                            else:
-                                st.error("Our system has found out you did not paste a proper JD 😡.")
-                    elif final_resume.errors:
-                        st.error("Our system has found out you did not upload a proper Resume 😡!")
-                    else:
-                        score_data = final_state.get("score_data")
-                        report_data = final_state.get("final_report")
-
-
-                        if not score_data or not report_data:
-                            st.error("Unable to generate evaluation. Please check your inputs.")
+                        if not final_resume or not final_jd:
+                            st.error("Unable to parse documents. Please ensure valid text is provided.")
+                        elif final_resume.errors and final_jd.errors:
+                            st.error("Our model has found out you did not uploaded either a proper Resume or a proper JD. Do not mess around 😡!")
+                        elif final_jd.errors:
+                                # FIX: if the graph fell back to the pasted JD, show the pasted-JD message
+                                if is_url_input and not final_state.get("jd_fallback_used"):
+                                    st.error(
+                                        "Could not extract a valid job description from this link ))."
+                                        " Please copy and paste the JD text directly instead to make it easier for us 🙏🏻😓."
+                                    )
+                                else:
+                                    st.error("Our system has found out you did not paste a proper JD 😡.")
+                        elif final_resume.errors:
+                            st.error("Our system has found out you did not upload a proper Resume 😡!")
                         else:
-                            st.success("Successfully analyzed the data!")
+                            score_data = final_state.get("score_data")
+                            report_data = final_state.get("final_report")
 
 
-                                                    # NEW: Display the 3-Tier Score Metrics
-                            st.header(f"📊 Fit Assessment: {report_data.category}", divider="gray")
-                            # FIX: animated hero score + sub-score bars (was st.metric + 3 metric columns)
-                            animate_hero_score("Overall Role Alignment", score_data.total_score)
+                            if not score_data or not report_data:
+                                st.error("Unable to generate evaluation. Please check your inputs.")
+                            else:
+                                st.success("Successfully analyzed the data!")
 
 
-                            st.markdown(METER_CSS, unsafe_allow_html=True)
-                            render_score_meter("Hard Skills (40%)", score_data.hard_skills_score, 40)
-                            render_score_meter("Competency Proof (40%)", score_data.competency_score, 40)
-                            render_score_meter("Seniority & Scope (20%)", score_data.seniority_score, 20)
+                                                        # NEW: Display the 3-Tier Score Metrics
+                                st.header(f"📊 Fit Assessment: {report_data.category}", divider="gray")
+                                # FIX: animated hero score + sub-score bars (was st.metric + 3 metric columns)
+                                animate_hero_score("Overall Role Alignment", score_data.total_score)
 
 
-                            st.info(score_data.quick_summary)
-                            st.divider()
+                                st.markdown(METER_CSS, unsafe_allow_html=True)
+                                render_score_meter("Hard Skills (40%)", score_data.hard_skills_score, 40)
+                                render_score_meter("Competency Proof (40%)", score_data.competency_score, 40)
+                                render_score_meter("Seniority & Scope (20%)", score_data.seniority_score, 20)
 
 
-                            # NEW: Competency Audit Section (Evidence-based soft/hard skill inspection)
-                            st.subheader("🔍 Competency & Evidence Audit")
-                            st.caption("Audited directly against your resume's work history bullets:")
-                            # FIX: summary counts above the audit expanders
-                            demonstrated = sum(1 for i in score_data.competency_audit if i.status == "Demonstrated in Experience")
-                            partial = sum(1 for i in score_data.competency_audit if i.status == "Partially Supported")
-                            missing = len(score_data.competency_audit) - demonstrated - partial
-                            k1, k2, k3 = st.columns(3)
-                            k1.metric("🟢 Demonstrated", demonstrated)
-                            k2.metric("🟡 Partially supported", partial)
-                            k3.metric("🔴 Missing", missing)
-                            for item in score_data.competency_audit:
-                                icon = "🟢" if item.status == "Demonstrated in Experience" else "🟡" if item.status == "Partially Supported" else "🔴"
-                                with st.expander(f"{icon} {item.competency} — {item.status}"):
-                                    st.markdown(f"**Evidence from Resume:** {item.evidence_citation}")
+                                st.info(score_data.quick_summary)
+                                st.divider()
 
 
-                            # NEW: High & Competitive Fit Branches (Contextual Bullet Rewrites)
-                            if report_data.bullet_rewrites:
-                                st.header("✍️ Contextual Bullet Point Rewrites", divider="gray")
-                                st.caption("Here is how to elevate your actual bullets to naturally reflect the role's expectations without buzzword stuffing:")
-                                for idx, rw in enumerate(report_data.bullet_rewrites, 1):
-                                    with st.expander(f"Rewrite #{idx}: Elevating '{rw.competency_elevated}' in {rw.target_role}"):
-                                        st.markdown(f"**Original Bullet:**\n> {rw.original_bullet}")
-                                        st.markdown(f"**Tailored Recommendation:**\n> {rw.rewritten_bullet}")
-                                        st.success(f"**Why this lands:** {rw.why_it_works}")
+                                # NEW: Competency Audit Section (Evidence-based soft/hard skill inspection)
+                                st.subheader("🔍 Competency & Evidence Audit")
+                                st.caption("Audited directly against your resume's work history bullets:")
+                                # FIX: composition bar + status tabs + evidence cards (was count row + expanders)
+                                render_competency_audit(score_data.competency_audit)
 
 
-                            # NEW: Low Fit Branch (< 50) -> Career Pivot Guidance
-                            if report_data.pivot_guidance:
-                                st.warning("⚠️ **Realistic Career Advisory: Direct Pivot Recommended**")
-                                st.markdown(f"**Strategic Takeaway:** {report_data.headline}")
+                                # NEW: High & Competitive Fit Branches (Contextual Bullet Rewrites)
+                                if report_data.bullet_rewrites:
+                                    st.header("✍️ Contextual Bullet Point Rewrites", divider="gray")
+                                    st.caption("Here is how to elevate your actual bullets to naturally reflect the role's expectations without buzzword stuffing:")
+                                    for idx, rw in enumerate(report_data.bullet_rewrites, 1):
+                                        with st.expander(f"Rewrite #{idx}: Elevating '{rw.competency_elevated}' in {rw.target_role}"):
+                                            col_orig, col_new = st.columns(2)  # FIX: side-by-side before/after
+                                            col_orig.markdown(f"**Original Bullet:**\n> {rw.original_bullet}")
+                                            col_new.markdown(f"**Tailored Recommendation:**\n> {rw.rewritten_bullet}")
+                                            st.success(f"**Why this lands:** {rw.why_it_works}")
 
 
-                                col_block, col_stone = st.columns(2)
-                                with col_block:
-                                    st.error("🚫 Non-Negotiable Core Blockers")
-                                    for blocker in report_data.pivot_guidance.core_blockers:
-                                        st.markdown(f"- {blocker}")
-                                with col_stone:
-                                    st.success("🎯 High-Fit Stepping-Stone Roles")
-                                    for role in report_data.pivot_guidance.stepping_stone_roles:
-                                        st.markdown(f"- **{role}**")
+                                # NEW: Low Fit Branch (< 50) -> Career Pivot Guidance
+                                if report_data.pivot_guidance:
+                                    st.warning("⚠️ **Realistic Career Advisory: Direct Pivot Recommended**")
+                                    st.markdown(f"**Strategic Takeaway:** {report_data.headline}")
 
 
-                                st.subheader("🛠️ High-Impact Prerequisite Projects")
-                                for proj in report_data.pivot_guidance.prerequisite_projects_or_skills:
-                                    st.markdown(f"- {proj}")
+                                    col_block, col_stone = st.columns(2)
+                                    with col_block:
+                                        st.error("🚫 Non-Negotiable Core Blockers")
+                                        for blocker in report_data.pivot_guidance.core_blockers:
+                                            st.markdown(f"- {blocker}")
+                                    with col_stone:
+                                        st.success("🎯 High-Fit Stepping-Stone Roles")
+                                        for role in report_data.pivot_guidance.stepping_stone_roles:
+                                            st.markdown(f"- **{role}**")
 
 
-                            # NEW: Strategic Action Recommendations
-                            if report_data.strategic_actions:
-                                st.header("🎯 Strategic Next Steps", divider="gray")
-                                for act in report_data.strategic_actions:
-                                    st.markdown(f"- {act}")
+                                    st.subheader("🛠️ High-Impact Prerequisite Projects")
+                                    for proj in report_data.pivot_guidance.prerequisite_projects_or_skills:
+                                        st.markdown(f"- {proj}")
 
 
-                except Exception as e:
-                    err_str = str(e)
-                    if "429" in err_str or "rate_limit" in err_str.lower():
-                        match = re.search(
-                            r"Please try again in ([0-9]+m[0-9]+(\.[0-9]+)?s|[0-9]+(\.[0-9]+)?s)",
-                            err_str,
-                        )
-                        st.error(
-                            "⏳ **Daily community token limit reached!**\n\n"
-                            "Please paste your free personal Groq API Key in the left sidebar under "
-                            "**API Configuration** to run your analysis without waiting."
-                        )
-                    else:
-                        st.error(f"⚠️ An unexpected error occurred: {err_str}")
+                                # NEW: Strategic Action Recommendations
+                                if report_data.strategic_actions:
+                                    st.header("🎯 Strategic Next Steps", divider="gray")
+                                    for act in report_data.strategic_actions:
+                                        st.markdown(f"- {act}")
+
+
+                    except Exception as e:
+                        err_str = str(e)
+                        if "429" in err_str or "rate_limit" in err_str.lower():
+                            match = re.search(
+                                r"Please try again in ([0-9]+m[0-9]+(\.[0-9]+)?s|[0-9]+(\.[0-9]+)?s)",
+                                err_str,
+                            )
+                            st.error(
+                                "⏳ **Daily community token limit reached!**\n\n"
+                                "Please paste your free personal Groq API Key in the left sidebar under "
+                                "**API Configuration** to run your analysis without waiting."
+                            )
+                        else:
+                            st.error(f"⚠️ An unexpected error occurred: {err_str}")
 
 
 
