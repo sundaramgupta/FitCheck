@@ -145,22 +145,32 @@ def render_score_meter(label, score, max_score):  # FIX
     )
 
 
-# FIX: competency audit visuals (composition bar + status tabs + evidence cards)
+# FIX: competency audit visuals (one summary line + thin coverage bar + grouped evidence cards)
 AUDIT_CSS = """<style>
-.fc-comp-bar{display:flex;gap:2px;height:12px;width:100%;margin:4px 0 8px;overflow:hidden;border-radius:6px;animation:fc-fill 1.2s ease-out;}
+.fc-summary{font-size:1rem;margin:2px 0 6px;}
+.fc-comp-bar{display:flex;gap:2px;height:8px;width:100%;margin:0 0 18px;overflow:hidden;border-radius:4px;animation:fc-fill 1.2s ease-out;}
 .fc-comp-seg{height:100%;}
-.fc-legend{display:flex;gap:18px;flex-wrap:wrap;font-size:0.9rem;margin-bottom:12px;}
-.fc-card{border-left:4px solid var(--fc-c);background:rgba(128,128,128,0.08);border-radius:8px;padding:10px 14px;margin:8px 0;}
-.fc-card-title{font-weight:600;margin-bottom:4px;}
-.fc-card-body{font-size:0.92rem;opacity:0.85;line-height:1.45;}
+.fc-group{font-weight:600;font-size:1rem;margin:14px 0 4px;}
+.fc-card{border-left:3px solid var(--fc-c);background:rgba(128,128,128,0.07);border-radius:6px;padding:8px 12px;margin:6px 0;}
+.fc-card-title{font-weight:600;}
+.fc-card-body{font-size:0.9rem;opacity:0.8;line-height:1.45;margin-top:2px;}
 </style>"""
 
-# (status from the model, icon, color, short label) in display order: gaps first
+# (status from the model, icon, color, group heading) in display order: gaps first
 AUDIT_GROUPS = [
-    ("Missing", "🔴", "#d03b3b", "Missing"),
-    ("Partially Supported", "🟡", "#fab219", "Partially supported"),
-    ("Demonstrated in Experience", "🟢", "#0ca30c", "Demonstrated"),
+    ("Missing", "🔴", "#d03b3b", "Missing from your resume"),
+    ("Partially Supported", "🟡", "#fab219", "Partially shown"),
+    ("Demonstrated in Experience", "🟢", "#0ca30c", "Already demonstrated"),
 ]
+
+
+def audit_card_html(item, color):  # FIX
+    return (
+        f'<div class="fc-card" style="--fc-c:{color};">'
+        f'<div class="fc-card-title">{html.escape(item.competency)}</div>'
+        f'<div class="fc-card-body"><b>Evidence from Resume:</b> {html.escape(item.evidence_citation)}</div>'
+        '</div>'
+    )
 
 
 def render_competency_audit(competency_audit):  # FIX
@@ -170,32 +180,37 @@ def render_competency_audit(competency_audit):  # FIX
         # anything other than green/yellow counts as Missing (same as the old icon logic)
         grouped[item.status if item.status in known else "Missing"].append(item)
 
+    total = len(competency_audit)
+    if total == 0:
+        return
+
     st.markdown(AUDIT_CSS, unsafe_allow_html=True)
+
+    # one plain-language line; groups with 0 items are left out
+    parts = [f"{icon} {len(grouped[status])} {heading.lower()}" for status, icon, _, heading in AUDIT_GROUPS if grouped[status]]
+    st.markdown(
+        f'<div class="fc-summary"><b>{total} requirements checked</b> &nbsp;·&nbsp; {" &nbsp;·&nbsp; ".join(parts)}</div>',
+        unsafe_allow_html=True,
+    )
 
     segments = "".join(
         f'<div class="fc-comp-seg" style="flex:{len(grouped[status])};background:{color};"></div>'
         for status, _, color, _ in reversed(AUDIT_GROUPS)
         if grouped[status]
     )
-    legend = "".join(
-        f"<span>{icon} {label}: <b>{len(grouped[status])}</b></span>"
-        for status, icon, _, label in reversed(AUDIT_GROUPS)
-    )
-    st.markdown(f'<div class="fc-comp-bar">{segments}</div><div class="fc-legend">{legend}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="fc-comp-bar">{segments}</div>', unsafe_allow_html=True)
 
-    tabs = st.tabs([f"{icon} {label} ({len(grouped[status])})" for status, icon, _, label in AUDIT_GROUPS])
-    for tab, (status, _, color, _) in zip(tabs, AUDIT_GROUPS):
-        with tab:
-            if not grouped[status]:
-                st.caption("Nothing in this group.")
-            for item in grouped[status]:
-                st.markdown(
-                    f'<div class="fc-card" style="--fc-c:{color};">'
-                    f'<div class="fc-card-title">{html.escape(item.competency)}</div>'
-                    f'<div class="fc-card-body"><b>Evidence from Resume:</b> {html.escape(item.evidence_citation)}</div>'
-                    '</div>',
-                    unsafe_allow_html=True,
-                )
+    for status, icon, color, heading in AUDIT_GROUPS:
+        items = grouped[status]
+        if not items:
+            continue
+        cards = "".join(audit_card_html(item, color) for item in items)
+        if status == "Demonstrated in Experience":
+            # strengths stay collapsed so the page focuses on what to fix
+            with st.expander(f"{icon} {heading} ({len(items)})"):
+                st.markdown(cards, unsafe_allow_html=True)
+        else:
+            st.markdown(f'<div class="fc-group">{icon} {heading} ({len(items)})</div>{cards}', unsafe_allow_html=True)
 
 
 with st.form("jd"):
