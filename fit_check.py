@@ -7,6 +7,7 @@ import html  # FIX: escapes LLM text shown inside the audit cards
 from bs4 import BeautifulSoup
 import requests
 import streamlit as st
+import streamlit.components.v1 as components  # FIX: runs the auto-scroll script
 import pandas as pd
 import numpy as np
 import pandas as pd
@@ -160,6 +161,32 @@ def render_score_meter(label, score, max_score, delay=0.0):  # FIX
         f'<div class="fc-meter-fill" style="width:{ratio * 100:.0f}%;background:{fill};animation-delay:{delay}s;"></div>'
         '</div></div>',
         unsafe_allow_html=True,
+    )
+
+
+def scroll_to_score():  # FIX
+    # Scrolls the page to the score ring once results render, then replays the
+    # ring/bar animations so the user sees them instead of a finished state.
+    components.html(
+        """
+<script>
+const doc = window.parent.document;
+const ring = doc.querySelector('.fc-ring-wrap');
+if (ring) {
+  ring.scrollIntoView({behavior: 'smooth', block: 'center'});
+  setTimeout(() => {
+    doc.querySelectorAll('.fc-ring-wrap, .fc-ring-fill, .fc-ring-num, .fc-meter-fill').forEach((el) => {
+      const delay = el.style.animationDelay;
+      el.style.animation = 'none';
+      el.getBoundingClientRect();
+      el.style.animation = '';
+      el.style.animationDelay = delay;
+    });
+  }, 500);
+}
+</script>
+""",
+        height=0,
     )
 
 
@@ -354,6 +381,7 @@ with st.form("jd"):
                                 render_score_meter("Hard Skills (40%)", score_data.hard_skills_score, 40, delay=0.6)
                                 render_score_meter("Competency Proof (40%)", score_data.competency_score, 40, delay=0.8)
                                 render_score_meter("Seniority & Scope (20%)", score_data.seniority_score, 20, delay=1.0)
+                                scroll_to_score()  # FIX: bring the score into view while it animates
 
 
                                 st.info(score_data.quick_summary)
