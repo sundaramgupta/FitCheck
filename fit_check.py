@@ -3,6 +3,7 @@ import instructor
 from groq import Groq
 import os
 import re
+import time  # FIX: used by the score count-up animation
 from bs4 import BeautifulSoup
 import requests
 import streamlit as st
@@ -95,6 +96,52 @@ def extract_text_from_url(url: str) -> str:
     # All-time error masking: never crash the Streamlit runtime
     # st.write("DEBUG exception:", repr(e))  # TEMP DEBUG
     return ""
+
+
+# FIX: score visuals (count-up total score + animated sub-score bars)
+METER_CSS = """<style>
+.fc-meter{margin:6px 0 14px;}
+.fc-meter-head{display:flex;justify-content:space-between;font-size:0.95rem;margin-bottom:6px;}
+.fc-meter-track{height:10px;border-radius:5px;overflow:hidden;}
+.fc-meter-fill{height:100%;border-radius:5px;animation:fc-fill 1.2s ease-out;}
+@keyframes fc-fill{from{width:0;}}
+</style>"""
+
+
+def hero_score_html(label, value):  # FIX
+    return (
+        '<div style="text-align:center;margin:8px 0 16px;">'
+        f'<div style="font-size:0.95rem;opacity:0.7;">{label}</div>'
+        f'<div style="font-size:56px;font-weight:600;line-height:1.1;">{value}'
+        '<span style="font-size:24px;opacity:0.6;"> / 100</span></div>'
+        '</div>'
+    )
+
+
+def animate_hero_score(label, score):  # FIX
+    placeholder = st.empty()
+    steps = 25
+    for i in range(1, steps + 1):
+        placeholder.markdown(hero_score_html(label, round(score * i / steps)), unsafe_allow_html=True)
+        time.sleep(0.03)
+
+
+def render_score_meter(label, score, max_score):  # FIX
+    ratio = score / max_score if max_score else 0
+    if ratio >= 0.75:
+        fill, status = "#2a78d6", "✅ Strong"
+    elif ratio >= 0.5:
+        fill, status = "#fab219", "⚠️ Partial"
+    else:
+        fill, status = "#d03b3b", "🔴 Gap"
+    st.markdown(
+        '<div class="fc-meter">'
+        f'<div class="fc-meter-head"><span>{label}</span><span>{score} / {max_score} · {status}</span></div>'
+        f'<div class="fc-meter-track" style="background:{fill}33;">'
+        f'<div class="fc-meter-fill" style="width:{ratio * 100:.0f}%;background:{fill};"></div>'
+        '</div></div>',
+        unsafe_allow_html=True,
+    )
 
 
 with st.form("jd"):
@@ -209,13 +256,14 @@ with st.form("jd"):
 
                                                     # NEW: Display the 3-Tier Score Metrics
                             st.header(f"📊 Fit Assessment: {report_data.category}", divider="gray")
-                            st.metric(label="Overall Role Alignment", value=f"{score_data.total_score} / 100")
+                            # FIX: animated hero score + sub-score bars (was st.metric + 3 metric columns)
+                            animate_hero_score("Overall Role Alignment", score_data.total_score)
 
 
-                            col1, col2, col3 = st.columns(3)
-                            col1.metric("Hard Skills (40%)", f"{score_data.hard_skills_score} / 40")
-                            col2.metric("Competency Proof (40%)", f"{score_data.competency_score} / 40")
-                            col3.metric("Seniority & Scope (20%)", f"{score_data.seniority_score} / 20")
+                            st.markdown(METER_CSS, unsafe_allow_html=True)
+                            render_score_meter("Hard Skills (40%)", score_data.hard_skills_score, 40)
+                            render_score_meter("Competency Proof (40%)", score_data.competency_score, 40)
+                            render_score_meter("Seniority & Scope (20%)", score_data.seniority_score, 20)
 
 
                             st.info(score_data.quick_summary)
@@ -225,6 +273,14 @@ with st.form("jd"):
                             # NEW: Competency Audit Section (Evidence-based soft/hard skill inspection)
                             st.subheader("🔍 Competency & Evidence Audit")
                             st.caption("Audited directly against your resume's work history bullets:")
+                            # FIX: summary counts above the audit expanders
+                            demonstrated = sum(1 for i in score_data.competency_audit if i.status == "Demonstrated in Experience")
+                            partial = sum(1 for i in score_data.competency_audit if i.status == "Partially Supported")
+                            missing = len(score_data.competency_audit) - demonstrated - partial
+                            k1, k2, k3 = st.columns(3)
+                            k1.metric("🟢 Demonstrated", demonstrated)
+                            k2.metric("🟡 Partially supported", partial)
+                            k3.metric("🔴 Missing", missing)
                             for item in score_data.competency_audit:
                                 icon = "🟢" if item.status == "Demonstrated in Experience" else "🟡" if item.status == "Partially Supported" else "🔴"
                                 with st.expander(f"{icon} {item.competency} — {item.status}"):
